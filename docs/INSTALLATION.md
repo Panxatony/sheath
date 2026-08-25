@@ -796,6 +796,13 @@ tree. Placing `uart5.dtbo` on the firmware partition and requesting it in
 `config.txt` is not enough: the node stays `disabled` in the running tree,
 which `/sys/firmware/devicetree/base/soc/serial@7e201a00/status` will confirm.
 
+**Confirmed by test.** Put a harmless `dtparam=spi=on` in `config.txt` and
+reboot: on a Debian raspi image `spi@7e204000` stays `disabled`. The firmware
+applies no device-tree directive at all there — not an overlay, not even a
+dtparam — so this is not about the overlay file. The firmware partition also
+lacks `bcm2711-rpi-cm4.dtb` (only `-cm4-io` ships), while the blade reports
+itself as `raspberrypi,4-compute-module`.
+
 **Fix.** Use an image with the downstream Raspberry Pi kernel — the Ubuntu
 preinstalled server images do, and there the same setting works — or drive the
 blade without fan telemetry. SoC temperature is read from sysfs and keeps

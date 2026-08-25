@@ -2283,7 +2283,8 @@ type stockRow struct {
 	Here     string // size on the site
 	Catalog  string // size in the catalogue
 	Complete bool
-	Wanted   int // blades at this site assigned to it
+	Wanted   int // blades at this site assigned to this image
+	Waiting  int // of those, still waiting for their installation
 	Note     string
 	Seen     string
 }
@@ -2306,7 +2307,10 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 	stock := a.siteImages()[id]
 
 	// Which images the blades here are assigned to, and how many want each.
+	// Assigned is not the same as waiting: a blade that has been running its
+	// image for a week is assigned to it and waiting for nothing.
 	wanted := map[string]int{}
+	waiting := map[string]int{}
 	used := 0
 	for _, b := range blades {
 		if b.SiteID != id {
@@ -2315,8 +2319,12 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 		if b.RackID != nil && b.Slot != nil {
 			used++
 		}
-		if b.Image != "" {
-			wanted[b.Image]++
+		if b.Image == "" {
+			continue
+		}
+		wanted[b.Image]++
+		if b.InstallState != installDone {
+			waiting[b.Image]++
 		}
 	}
 
@@ -2339,7 +2347,7 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		seen[imgID] = true
-		row := stockRow{ImageID: imgID, Wanted: wanted[imgID]}
+		row := stockRow{ImageID: imgID, Wanted: wanted[imgID], Waiting: waiting[imgID]}
 		cat, okCat := inCatalog[imgID]
 		if okCat && cat.Bytes > 0 {
 			row.Catalog = human(cat.Bytes)
@@ -2439,7 +2447,7 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
   <table>
     <thead><tr><th>{{t .L "th.image"}}</th><th>{{t .L "th.status"}}</th>
       <th>{{t .L "stock.here"}}</th><th>{{t .L "stock.catalog"}}</th>
-      <th>{{t .L "stock.wanted"}}</th><th>{{t .L "th.last"}}</th></tr></thead>
+      <th>{{t .L "stock.assigned"}}</th><th>{{t .L "th.last"}}</th></tr></thead>
     <tbody>{{$l := .L}}{{range .Stock}}
       <tr>
         <td class="mono">{{.ImageID}}
@@ -2448,7 +2456,8 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
         <td class="mono num">{{if .Here}}{{.Here}}{{else}}—{{end}}
           {{if and .Here (not .Complete)}}<div class="mono sub2">{{t $l "stock.partial"}}</div>{{end}}</td>
         <td class="mono num">{{if .Catalog}}{{.Catalog}}{{else}}—{{end}}</td>
-        <td class="mono num">{{if .Wanted}}{{.Wanted}}{{else}}—{{end}}</td>
+        <td class="mono num">{{if .Wanted}}{{.Wanted}}{{else}}—{{end}}
+          {{if .Waiting}}<div class="mono sub2">{{t $l "stock.waiting" .Waiting}}</div>{{end}}</td>
         <td class="mono">{{if .Seen}}{{.Seen}}{{else}}—{{end}}</td>
       </tr>
     {{end}}</tbody>

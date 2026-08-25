@@ -18,6 +18,10 @@ on `main`.
   address, so a session without its site is one nobody can place.
 
 ### Fixed
+- "Blades waiting" counted blades assigned to an image, most of which had
+  been running it for days. The column says "Blades assigned" now, and names
+  separately how many of them are still to install — which is the number that
+  is actually waiting.
 - The site box on the map ran out of room: the text overflowed on the right
   and the state dot sat inside the word. Wider box, two lines, and the dot
   beside the text rather than in it.

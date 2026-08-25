@@ -267,11 +267,12 @@ var catalog = map[string]map[Lang]string{
 	"stock.hint": {
 		LangEN: "what this site holds, against what its blades were assigned",
 		LangDE: "was dieser Standort hält, gegen das, was seinen Blades zugewiesen ist"},
-	"stock.here":    {LangEN: "Here", LangDE: "Hier"},
-	"stock.catalog": {LangEN: "Catalogue", LangDE: "Katalog"},
-	"stock.wanted":  {LangEN: "Blades waiting", LangDE: "Blades zugewiesen"},
-	"stock.partial": {LangEN: "differs from the catalogue", LangDE: "weicht vom Katalog ab"},
-	"stock.absent":  {LangEN: "not here", LangDE: "nicht hier"},
+	"stock.here":     {LangEN: "Here", LangDE: "Hier"},
+	"stock.catalog":  {LangEN: "Catalogue", LangDE: "Katalog"},
+	"stock.assigned": {LangEN: "Blades assigned", LangDE: "Blades zugewiesen"},
+	"stock.waiting":  {LangEN: "%d still to install", LangDE: "%d noch zu installieren"},
+	"stock.partial":  {LangEN: "differs from the catalogue", LangDE: "weicht vom Katalog ab"},
+	"stock.absent":   {LangEN: "not here", LangDE: "nicht hier"},
 	"stock.none": {
 		LangEN: "No image is held here and none is assigned to a blade here.",
 		LangDE: "Hier liegt kein Image, und keinem Blade hier ist eines zugewiesen."},
