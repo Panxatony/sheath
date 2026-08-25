@@ -993,12 +993,64 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 		"url":        url,
 		"sha256":     img.SHA256,
 		"seed":       img.Seed,
-		"target":     a.setting("install_target", "/dev/nvme0n1"),
+		"target":     a.installTarget(b),
+		"options":    a.installOptions(b),
 		"server_url": a.baseURL,
 		"token":      tok,
 		"hostname":   b.Hostname,
 		"ssh_keys":   keys,
 	})
+}
+
+// installTarget is where this blade's image goes. Resolved from the most
+// specific answer available: what was said about this blade, then about its
+// site, then the installation-wide default.
+func (a *App) installTarget(b *Blade) string {
+	if v, ok := a.installSetting(b, "install_target").(string); ok && v != "" {
+		return v
+	}
+	return "/dev/nvme0n1"
+}
+
+// installOptions are the choices this installation should make. They live in
+// the ordinary configuration, in the "install" section, so the same
+// global/site/blade layering applies as to everything else the blade is told.
+//
+//	install:
+//	  after: halt          # reboot (default) | halt | shell
+//	  no_grow: true
+//	  require_checksum: true
+//	  no_cloud_init: true
+func (a *App) installOptions(b *Blade) map[string]any {
+	out := map[string]any{}
+	for _, key := range []string{
+		"no_grow", "require_checksum", "no_root_keys", "no_cloud_init",
+		"no_agent", "no_clock_sync",
+	} {
+		if v, ok := a.installSetting(b, key).(bool); ok && v {
+			out[key] = true
+		}
+	}
+	if v, ok := a.installSetting(b, "after").(string); ok && v != "" {
+		out["after"] = v
+	}
+	if v, ok := num(a.installSetting(b, "reboot_delay")); ok && v > 0 {
+		out["reboot_delay"] = int(v)
+	}
+	return out
+}
+
+// installSetting looks in the blade's merged configuration under "install",
+// which already carries global, group and blade scopes — an installation
+// choice is a property of the blade, and belongs where its other properties
+// are rather than in a second mechanism.
+func (a *App) installSetting(b *Blade, key string) any {
+	cfg, _ := a.mergedConfig(b)
+	sec, _ := cfg["install"].(map[string]any)
+	if sec == nil {
+		return nil
+	}
+	return sec[key]
 }
 
 // stringList pulls a list of strings out of the configuration and accepts a

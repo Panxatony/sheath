@@ -59,6 +59,37 @@ type provisionResp struct {
 	SSHKeys    []string `json:"ssh_keys"`
 	RetryAfter int      `json:"retry_after"`
 	Message    string   `json:"message"`
+
+	// How this installation should be carried out. The installer used to
+	// decide all of it by itself, which meant a change needed a new boot.img
+	// on every site. It is the server's business: it knows which blade this
+	// is, what it is for, and what the operator asked for.
+	Opts installOpts `json:"options"`
+}
+
+// installOpts are the choices an installation makes. Zero values mean the
+// long-standing default, so an older server talking to a newer installer gets
+// exactly the behaviour it had before.
+type installOpts struct {
+	// GrowLast extends the last partition to the end of the disk. Off means
+	// leave the image's own layout alone.
+	NoGrow bool `json:"no_grow"`
+	// After the write: "reboot" (default), "halt" — stop and stay put — or
+	// "shell", which drops to the console for someone who wants to look
+	// around before the first boot.
+	After string `json:"after"`
+	// RequireChecksum refuses to write an image the catalogue has no checksum
+	// for, rather than writing it unverified.
+	RequireChecksum bool `json:"require_checksum"`
+	// The seeding steps, each of which can be turned off where it does not
+	// fit the image.
+	NoRootKeys  bool `json:"no_root_keys"`
+	NoCloudInit bool `json:"no_cloud_init"`
+	NoAgent     bool `json:"no_agent"`
+	NoClockSync bool `json:"no_clock_sync"`
+	// RebootDelay in seconds before the machine restarts, so a console can be
+	// read. 0 means the default of five seconds.
+	RebootDelay int `json:"reboot_delay"`
 }
 
 func main() {
@@ -143,7 +174,9 @@ func run() error {
 	// taught to do it later — Debian's fstab carries x-systemd.growfs and
 	// Ubuntu runs cloud-init's growpart, so both grow the filesystem into the
 	// space at first boot.
-	if grown, err := growLastPartition(target); err != nil {
+	if job.Opts.NoGrow {
+		logf("Partition left as the image has it (asked for)")
+	} else if grown, err := growLastPartition(target); err != nil {
 		logf("Partition not grown: %v", err)
 		c.note("partition not grown: %v", err)
 	} else if grown > 0 {
@@ -161,9 +194,28 @@ func run() error {
 
 	c.report("done", 100, "")
 	logf("")
-	logf("Done. Rebooting in 5 seconds ...")
-	time.Sleep(5 * time.Second)
-	reboot()
+	switch job.Opts.After {
+	case "halt":
+		// Someone wants to touch the disk, or move the blade, before it ever
+		// runs what was written.
+		logf("Written. Staying put, as asked — the blade will not restart.")
+		c.note("installation finished, blade halted as configured")
+		for {
+			time.Sleep(time.Hour)
+		}
+	case "shell":
+		logf("Written. Dropping to the console, as asked.")
+		c.note("installation finished, console as configured")
+		return nil
+	default:
+		delay := job.Opts.RebootDelay
+		if delay <= 0 {
+			delay = 5
+		}
+		logf("Done. Rebooting in %d seconds ...", delay)
+		time.Sleep(time.Duration(delay) * time.Second)
+		reboot()
+	}
 	return nil
 }
 
@@ -748,6 +800,10 @@ func (c *client) writeImage(job *provisionResp, target string) error {
 				job.SHA256, got)
 		}
 		logf("Checksum matches (%s...)", got[:16])
+	} else if job.Opts.RequireChecksum {
+		// Refusing is the point: an unverified image is one nobody can say
+		// arrived intact, and it has just been written to a disk.
+		return errors.New("no checksum in the catalogue, and this installation requires one")
 	} else {
 		logf("No checksum on file — content unverified.")
 	}
@@ -932,7 +988,9 @@ func (c *client) seed(job *provisionResp, target string) error {
 	// every distribution — Ubuntu, Debian and DietPi all permit key-based
 	// root login (PermitRootLogin prohibit-password). cloud-init, by
 	// contrast, exists only on Ubuntu.
-	if err := seedRootKeys(mnt, job.SSHKeys); err != nil {
+	if job.Opts.NoRootKeys {
+		logf("Root SSH keys skipped (asked for)")
+	} else if err := seedRootKeys(mnt, job.SSHKeys); err != nil {
 		logf("WARNING: SSH keys for root not placed: %v", err)
 		c.note("SSH keys for root not placed: %v", err)
 	} else if len(job.SSHKeys) > 0 {
@@ -941,7 +999,10 @@ func (c *client) seed(job *provisionResp, target string) error {
 
 	// If an agent binary is available it is installed straight away. If not
 	// that is no error — the system simply boots without one.
-	if err := c.installAgent(job, mnt); err != nil {
+	if job.Opts.NoAgent {
+		logf("Agent not installed (asked for)")
+		c.note("agent skipped as configured")
+	} else if err := c.installAgent(job, mnt); err != nil {
 		logf("Agent not installed: %v", err)
 		c.note("agent NOT installed: %v", err)
 	} else {
@@ -951,7 +1012,9 @@ func (c *client) seed(job *provisionResp, target string) error {
 	// Additionally, where it fits: cloud-init on the boot partition. That is
 	// the path Ubuntu intends, and it sets the hostname cleanly alongside the
 	// keys.
-	if err := c.seedCloudInit(job, target); err != nil {
+	if job.Opts.NoCloudInit {
+		logf("cloud-init seed skipped (asked for)")
+	} else if err := c.seedCloudInit(job, target); err != nil {
 		logf("cloud-init seed skipped: %v", err)
 		c.note("cloud-init seed skipped: %v", err)
 	} else {

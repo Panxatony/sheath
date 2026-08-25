@@ -6,6 +6,18 @@ on `main`.
 ## Unreleased
 
 ### Added
+- How an installation is carried out is now the server's business, not the
+  installer's: target device, whether to grow the last partition, what to do
+  when the write is finished (reboot, halt, or drop to the console), how long
+  to wait before rebooting, whether a missing checksum is a refusal, and each
+  seeding step on its own. They live in the ordinary configuration under
+  `install`, so the same global → group → blade layering applies as to
+  everything else a blade is told — a choice about a blade belongs where its
+  other properties are, not in a second mechanism. Zero values mean exactly
+  what the installer did before, so an older server and a newer installer
+  still agree.
+
+### Added
 - Thresholds and timings are policy, not constants: SoC and disk warn/critical
   levels, the offline threshold, command expiry and sample interval/retention.
   Global by default, overridable per site for the health thresholds — a blade
