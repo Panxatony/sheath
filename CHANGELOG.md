@@ -6,6 +6,30 @@ on `main`.
 ## Unreleased
 
 ### Added
+- Sites are complete as a model and visible as a thing. The overview groups
+  BladeRunners under their site with that site's network and pool; a site can
+  be created, renamed, moved to another network or removed from the interface
+  and the API (`POST/PUT/DELETE /api/v1/sites`); the BladeRunner page names
+  the site it stands in; and creating a BladeRunner asks which site it belongs
+  to once there is more than one.
+
+### Changed
+- A blade's address is derived from the site of its BladeRunner, everywhere —
+  not only in `bladeIP` but in the blade decoration, the BladeRunner view and
+  the messages. What remains global is what legitimately means "here": the
+  local site's pool and the address the blades are told to reach.
+- DHCP reservations are written for the local site only, and the sync reports
+  how many blades it skipped for belonging elsewhere. This server serves one
+  broadcast domain; a reservation for another site is one nobody can hand out.
+- Moving a site's network rewrites the reservations in the same breath — the
+  addresses are derived, so they move with it.
+
+### Fixed
+- An address block was unique across all sites, so the second site could not
+  have a `.100` block because the first one already did. Uniqueness is now per
+  site, migrated by rebuilding the table.
+
+### Added
 - The BladeRunner page shows what the compute-blade-agent knows. Three levels:
   the hardware of one slot in its action overlay (SoC, airflow, fan speed and
   target, fan unit type, module, blade state, stealth); the enclosure as a

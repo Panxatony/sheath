@@ -23,6 +23,7 @@ type App struct {
 	// Site networks, memoised for the duration of one request
 	netCacheMu sync.Mutex
 	netCache   map[int64]string
+	nameCache  map[int64]string
 }
 
 func main() {
@@ -82,6 +83,9 @@ func main() {
 
 	// ── Management ──
 	mux.HandleFunc("GET /api/v1/sites", app.requireAdmin(app.hSitesList))
+	mux.HandleFunc("POST /api/v1/sites", app.requireAdmin(app.hSiteCreate))
+	mux.HandleFunc("PUT /api/v1/sites/{id}", app.requireAdmin(app.hSiteUpdate))
+	mux.HandleFunc("DELETE /api/v1/sites/{id}", app.requireAdmin(app.hSiteDelete))
 	mux.HandleFunc("GET /api/v1/bladerunners", app.requireAdmin(app.hRacksList))
 	mux.HandleFunc("POST /api/v1/bladerunners", app.requireAdmin(app.hRacksCreate))
 	mux.HandleFunc("PUT /api/v1/bladerunners/{id}", app.requireAdmin(app.hRackUpdate))
@@ -134,6 +138,10 @@ func main() {
 
 	mux.HandleFunc("GET /", app.requireUI(app.hUI))
 	mux.HandleFunc("GET /bladerunners/{id}", app.requireUI(app.hRackPage))
+
+	mux.HandleFunc("POST /sites", app.requireUI(app.hUISiteCreate))
+	mux.HandleFunc("POST /sites/{id}", app.requireUI(app.hUISiteUpdate))
+	mux.HandleFunc("POST /sites/{id}/delete", app.requireUI(app.hUISiteDelete))
 
 	mux.HandleFunc("POST /bladerunners", app.requireUI(app.hUIRackCreate))
 	mux.HandleFunc("POST /bladerunners/{id}", app.requireUI(app.hUIRackUpdate))

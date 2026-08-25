@@ -54,15 +54,17 @@ type slotView struct {
 }
 
 type rackView struct {
-	Rack    Rack
-	From    string
-	To      string
-	Slots   []slotView
-	Cells   []slotCell // compact occupancy strip for the overview
-	Therm   thermView  // stage 2: what the enclosure as a whole is doing
-	Used    int
-	Free    int
-	Percent int
+	Rack     Rack
+	SiteName string
+	SiteNet  string
+	From     string
+	To       string
+	Slots    []slotView
+	Cells    []slotCell // compact occupancy strip for the overview
+	Therm    thermView  // stage 2: what the enclosure as a whole is doing
+	Used     int
+	Free     int
+	Percent  int
 }
 
 // slotCell is one slot at a glance: number, colour, and the essentials in
@@ -171,9 +173,11 @@ func (a *App) hLang(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 	rv := rackView{
-		Rack: rk,
-		From: a.netBase() + "." + itoa(rk.IPOffset+1),
-		To:   a.netBase() + "." + itoa(rk.IPOffset+rk.Size),
+		Rack:     rk,
+		SiteName: a.siteName(rk.SiteID),
+		SiteNet:  a.siteNetBase(rk.SiteID),
+		From:     a.siteNetBase(rk.SiteID) + "." + itoa(rk.IPOffset+1),
+		To:       a.siteNetBase(rk.SiteID) + "." + itoa(rk.IPOffset+rk.Size),
 	}
 	idx := int64(a.rackIndex(rk))
 	inSlot := map[int]Blade{}
@@ -343,6 +347,8 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 		"Images":     images,
 		"Refresh":    active,
 		"Racks":      views,
+		"Sites":      a.groupBySite(views, blades, l),
+		"SiteCounts": a.rackCounts(),
 		"Unassigned": unassigned,
 		"Blades":     len(blades),
 		"NetBase":    a.netBase(),
@@ -355,6 +361,135 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 		"NoSpace":    offErr != nil,
 		"Open":       a.adminToken == "",
 	})
+}
+
+// siteGroup is one site with the BladeRunners standing in it. The overview is
+// grouped rather than flat because an address only means something inside its
+// network: two blades called .103 in two sites are two different machines.
+type siteGroup struct {
+	Site   Site
+	Local  bool
+	Net    string
+	Pool   string
+	Racks  []rackView
+	Blades int
+	Used   int
+	Free   int
+}
+
+func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup {
+	sites, err := a.listSites()
+	if err != nil {
+		return nil
+	}
+	local := int64(0)
+	if st, lerr := a.localSite(); lerr == nil {
+		local = st.ID
+	}
+	byID := map[int64]*siteGroup{}
+	out := make([]siteGroup, 0, len(sites))
+	for _, st := range sites {
+		out = append(out, siteGroup{
+			Site:  st,
+			Local: st.ID == local,
+			Net:   st.NetBase + ".0/24",
+			Pool:  fmt.Sprintf(".%d–.%d", st.PoolFrom, st.PoolTo),
+		})
+	}
+	for i := range out {
+		byID[out[i].Site.ID] = &out[i]
+	}
+	for _, rv := range views {
+		g, ok := byID[rv.Rack.SiteID]
+		if !ok {
+			continue
+		}
+		g.Racks = append(g.Racks, rv)
+		g.Used += rv.Used
+		g.Free += rv.Free
+	}
+	for _, b := range blades {
+		if g, ok := byID[b.SiteID]; ok && b.RackID != nil {
+			g.Blades++
+		}
+	}
+	return out
+}
+
+// ── Sites (UI) ───────────────────────────────────────────────────────
+
+func (a *App) hUISiteCreate(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, "/", "err", T(l, "err.form"))
+		return
+	}
+	st := Site{
+		Name:       strings.TrimSpace(r.FormValue("name")),
+		Location:   strings.TrimSpace(r.FormValue("location")),
+		NetBase:    strings.TrimSpace(r.FormValue("net_base")),
+		PoolFrom:   210,
+		PoolTo:     240,
+		OffsetBase: 100,
+		OffsetStep: 20,
+	}
+	if _, err := a.createSite(st); err != nil {
+		redirectMsg(w, r, "/", "err", errText(l, err))
+		return
+	}
+	a.logEvent("", "info", "site "+st.Name+" created ("+st.NetBase+".0/24)")
+	redirectMsg(w, r, "/", "msg", T(l, "msg.sitecreated", st.Name, st.NetBase))
+}
+
+func (a *App) hUISiteUpdate(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, "/", "err", T(l, "err.form"))
+		return
+	}
+	old, err := a.getSite(id)
+	if err != nil {
+		redirectMsg(w, r, "/", "err", errText(l, err))
+		return
+	}
+	st := *old
+	st.Name = strings.TrimSpace(r.FormValue("name"))
+	st.Location = strings.TrimSpace(r.FormValue("location"))
+	st.NetBase = strings.TrimSpace(r.FormValue("net_base"))
+	if v, err := strconv.Atoi(r.FormValue("pool_from")); err == nil {
+		st.PoolFrom = v
+	}
+	if v, err := strconv.Atoi(r.FormValue("pool_to")); err == nil {
+		st.PoolTo = v
+	}
+	if err := a.updateSite(id, st); err != nil {
+		redirectMsg(w, r, "/", "err", errText(l, err))
+		return
+	}
+	// Addresses are derived from the site, so a moved network moves every
+	// blade standing in it — the reservations must be rewritten at once.
+	note := T(l, "msg.sitesaved", st.Name)
+	if old.NetBase != st.NetBase {
+		if res, serr := a.syncDHCP(); serr != nil {
+			note += " — " + errText(l, serr)
+		} else {
+			note += " — " + T(l, "msg.dhcprewritten", len(res.Written))
+		}
+	}
+	a.logEvent("", "info", "site changed: "+st.Name)
+	redirectMsg(w, r, "/", "msg", note)
+}
+
+func (a *App) hUISiteDelete(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := a.deleteSite(id); err != nil {
+		redirectMsg(w, r, "/", "err", errText(l, err))
+		return
+	}
+	a.logEvent("", "warn", "site removed")
+	redirectMsg(w, r, "/", "msg", T(l, "msg.siteremoved"))
 }
 
 // ── BladeRunner detail ───────────────────────────────────────────────
@@ -422,12 +557,17 @@ func (a *App) hUIRackCreate(w http.ResponseWriter, r *http.Request) {
 		redirectMsg(w, r, "/", "err", T(l, "err.badsize", size))
 		return
 	}
-	st, err := a.localSite()
-	if err != nil {
-		redirectMsg(w, r, "/", "err", "no site present")
-		return
+	// A site may be chosen; without one the local site is meant.
+	siteID, _ := strconv.ParseInt(r.FormValue("site"), 10, 64)
+	if siteID == 0 {
+		st, err := a.localSite()
+		if err != nil {
+			redirectMsg(w, r, "/", "err", "no site present")
+			return
+		}
+		siteID = st.ID
 	}
-	siteID := st.ID
+	net := a.siteNetBase(siteID)
 	off, err := a.nextRackOffset(siteID)
 	if err != nil {
 		redirectMsg(w, r, "/", "err", errText(l, err))
@@ -444,7 +584,7 @@ func (a *App) hUIRackCreate(w http.ResponseWriter, r *http.Request) {
 	a.logEvent("", "info", "Rack \""+name+"\" created")
 	redirectMsg(w, r, "/bladerunners/"+strconv.FormatInt(id, 10), "msg",
 		T(l, "msg.rackcreated", name,
-			a.netBase()+"."+itoa(off+1), a.netBase()+"."+itoa(off+size)))
+			net+"."+itoa(off+1), net+"."+itoa(off+size)))
 }
 
 func (a *App) hUIRackUpdate(w http.ResponseWriter, r *http.Request) {
@@ -1329,11 +1469,14 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
 {{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
 {{range .Warnings}}<div class="bad"><b>{{t $.L "warn.net"}}:</b> {{.}}</div>{{end}}
 
-{{if .Racks}}
-<div class="card"><div class="card-head"><h2>{{t .L "ov.racks"}}</h2>
-<span class="tag">{{t .L "ov.rackhint"}}</span></div>
-<div class="body"><div class="grid">
 {{$l := .L}}
+{{if .Racks}}
+{{range .Sites}}
+<div class="card"><div class="card-head">
+  <h2>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}</h2>
+  <span class="tag">{{.Net}} · {{t $l "site.pool"}} {{.Pool}}{{if .Site.Location}} · {{.Site.Location}}{{end}}</span></div>
+{{if .Racks}}
+<div class="body"><div class="grid">
 {{range .Racks}}
   <div class="rackcard">
     <a class="name" href="/bladerunners/{{.Rack.ID}}">{{.Rack.Name}}</a>
@@ -1345,7 +1488,12 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
     <div class="tag">{{t $l "ov.occupancy" .Used .Free}}</div>
   </div>
 {{end}}
-</div></div></div>
+</div></div>
+{{else}}
+<div class="body empty">{{t $l "site.norack"}}</div>
+{{end}}
+</div>
+{{end}}
 {{else}}
 <div class="card"><div class="body empty">{{t .L "ov.norack"}}</div></div>
 {{end}}
@@ -1368,11 +1516,81 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
           </select></div>
         <div><label for="l">{{t .L "form.location"}}</label>
           <input id="l" type="text" name="location" maxlength="60" placeholder="{{t .L "form.optional"}}"></div>
+        {{if gt (len .Sites) 1}}
+        <div class="narrow"><label for="site">{{t .L "site.one"}}</label>
+          <select id="site" name="site">
+            {{range .Sites}}<option value="{{.Site.ID}}"{{if .Local}} selected{{end}}>{{.Site.Name}}</option>{{end}}
+          </select></div>
+        {{end}}
         <div class="narrow"><button type="submit">{{t .L "form.create"}}</button></div>
       </div>
     </form>
     <p class="hint" style="margin:.9rem 0 0">{{t .L "ov.blockhint"}}</p>
   {{end}}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "site.title"}}</h2>
+    <span class="tag">{{t .L "site.count" (len .Sites)}}</span></div>
+  <div class="body" style="padding:0">
+    <table>
+      <thead><tr><th>{{t .L "site.name"}}</th><th>{{t .L "site.net"}}</th>
+        <th>{{t .L "site.pool"}}</th><th>{{t .L "meta.racks"}}</th><th></th></tr></thead>
+      <tbody>{{$counts := .SiteCounts}}{{range .Sites}}
+        <tr>
+          <td>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
+            {{if .Site.Location}}<div class="mono sub2">{{.Site.Location}}</div>{{end}}</td>
+          <td class="mono">{{.Net}}</td>
+          <td class="mono">{{.Pool}}</td>
+          <td class="mono num">{{index $counts .Site.ID}}</td>
+          <td class="right">
+            <details class="menu"><summary title="{{t $l "menu.open"}}">···</summary>
+              <div class="menu-panel">
+                <div class="menu-head">{{.Site.Name}}</div>
+                <form method="post" action="/sites/{{.Site.ID}}">
+                  <label>{{t $l "site.name"}}</label>
+                  <input type="text" name="name" value="{{.Site.Name}}" required maxlength="60">
+                  <label>{{t $l "form.location"}}</label>
+                  <input type="text" name="location" value="{{.Site.Location}}" maxlength="60">
+                  <label>{{t $l "site.net"}}</label>
+                  <input type="text" name="net_base" value="{{.Site.NetBase}}" required
+                         pattern="[0-9]+\.[0-9]+\.[0-9]+" placeholder="10.0.0">
+                  <div class="menu-row">
+                    <input type="number" name="pool_from" value="{{.Site.PoolFrom}}" min="1" max="254"
+                           aria-label="{{t $l "site.poolfrom"}}">
+                    <input type="number" name="pool_to" value="{{.Site.PoolTo}}" min="1" max="254"
+                           aria-label="{{t $l "site.poolto"}}">
+                  </div>
+                  <button class="mini" type="submit">{{t $l "rk.set"}}</button>
+                </form>
+                {{if not .Local}}
+                <div class="menu-sep"></div>
+                <form method="post" action="/sites/{{.Site.ID}}/delete">
+                  <button class="mini danger" type="submit">{{t $l "act.remove"}}</button></form>
+                {{end}}
+                <div class="menu-note">{{t $l "site.movehint"}}</div>
+              </div>
+            </details>
+          </td>
+        </tr>
+      {{end}}</tbody>
+    </table>
+  </div>
+  <div class="body">
+    <form method="post" action="/sites">
+      <div class="row">
+        <div><label for="sn">{{t .L "site.name"}}</label>
+          <input id="sn" type="text" name="name" required maxlength="60" placeholder="{{t .L "site.example"}}"></div>
+        <div class="narrow"><label for="snet">{{t .L "site.net"}}</label>
+          <input id="snet" type="text" name="net_base" required pattern="[0-9]+\.[0-9]+\.[0-9]+"
+                 placeholder="10.1.0"></div>
+        <div><label for="sl">{{t .L "form.location"}}</label>
+          <input id="sl" type="text" name="location" maxlength="60" placeholder="{{t .L "form.optional"}}"></div>
+        <div class="narrow"><button type="submit">{{t .L "form.create"}}</button></div>
+      </div>
+    </form>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "site.hint"}}</p>
   </div>
 </div>
 
@@ -1446,7 +1664,7 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
   <p class="crumb"><a href="/">{{mark}} {{t .L "nav.overview"}}</a> / {{t .L "nav.rack"}}</p>
   <h1>{{.R.Rack.Name}}</h1>
   <p class="sub">{{t .L "ov.slots" .R.Rack.Size}}{{if .R.Rack.Location}} · {{.R.Rack.Location}}{{end}}
-   · {{t .L "rk.block" .R.From .R.To}}</p>
+   · {{t .L "rk.block" .R.From .R.To}}{{if .R.SiteName}} · {{t .L "site.one"}} {{.R.SiteName}}{{end}}</p>
 </div>` + topRight + `</div>
 <div class="meta"><span>{{t .L "meta.used"}} <b>{{.R.Used}}</b></span>
 <span>{{t .L "meta.free"}} <b>{{.R.Free}}</b></span></div>

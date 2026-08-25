@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,11 +48,15 @@ CREATE TABLE IF NOT EXISTS sites (
 -- blade IP = <net_base>.(ip_offset + slot)
 CREATE TABLE IF NOT EXISTS racks (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    site_id   INTEGER NOT NULL DEFAULT 1,
     name      TEXT    NOT NULL UNIQUE,
     size      INTEGER NOT NULL CHECK (size IN (2, 4, 10, 20)),
-    ip_offset INTEGER NOT NULL UNIQUE,
+    ip_offset INTEGER NOT NULL,
     location  TEXT    NOT NULL DEFAULT '',
-    created   TEXT    NOT NULL
+    created   TEXT    NOT NULL,
+    -- Per site, not globally: two sites are two networks, and .100 in one is
+    -- a different address from .100 in the other.
+    UNIQUE (site_id, ip_offset)
 );
 
 -- The serial number is the identity. rack_id/slot are the position; both may
@@ -200,6 +205,8 @@ type Blade struct {
 	IP       string `json:"ip"`
 	RackName string `json:"rack_name"`
 	RackIdx  int    `json:"rack_index"`
+	SiteID   int64  `json:"site_id"`
+	SiteName string `json:"site_name"`
 }
 
 type Image struct {
@@ -234,10 +241,56 @@ func openDB(path string) (*sql.DB, error) {
 	for _, ddl := range migrations {
 		_, _ = db.Exec(ddl)
 	}
+	if err := scopeOffsets(db); err != nil {
+		return nil, err
+	}
 	if err := widenSizes(db); err != nil {
-		return nil, fmt.Errorf("Migration Groessen: %w", err)
+		return nil, fmt.Errorf("size migration: %w", err)
 	}
 	return db, nil
+}
+
+// scopeOffsets moves the uniqueness of an address block from "globally" to
+// "per site". With one site the two are the same thing, which is why the
+// original constraint went unnoticed; with the second site it rejects a
+// perfectly ordinary block. SQLite cannot alter a constraint, so the table is
+// rebuilt — and only while the old one is genuinely still in place.
+func scopeOffsets(db *sql.DB) error {
+	var ddl string
+	if err := db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name='racks'`).Scan(&ddl); err != nil {
+		return nil // table just created — then it is already right
+	}
+	if !strings.Contains(ddl, "ip_offset INTEGER NOT NULL UNIQUE") {
+		return nil
+	}
+	hasSite := strings.Contains(ddl, "site_id")
+	sel := `SELECT id,site_id,name,size,ip_offset,location,created FROM racks`
+	if !hasSite {
+		sel = `SELECT id,1,name,size,ip_offset,location,created FROM racks`
+	}
+	stmts := []string{
+		`PRAGMA foreign_keys=OFF`,
+		`CREATE TABLE racks_new (
+			id        INTEGER PRIMARY KEY AUTOINCREMENT,
+			site_id   INTEGER NOT NULL DEFAULT 1,
+			name      TEXT    NOT NULL UNIQUE,
+			size      INTEGER NOT NULL CHECK (size IN (2, 4, 10, 20)),
+			ip_offset INTEGER NOT NULL,
+			location  TEXT    NOT NULL DEFAULT '',
+			created   TEXT    NOT NULL,
+			UNIQUE (site_id, ip_offset))`,
+		`INSERT INTO racks_new(id,site_id,name,size,ip_offset,location,created) ` + sel,
+		`DROP TABLE racks`,
+		`ALTER TABLE racks_new RENAME TO racks`,
+		`PRAGMA foreign_keys=ON`,
+	}
+	for _, q := range stmts {
+		if _, err := db.Exec(q); err != nil {
+			return fmt.Errorf("%s: %w", strings.Split(q, "\n")[0], err)
+		}
+	}
+	return nil
 }
 
 // widenSizes catches up the permitted sizes. SQLite cannot alter a CHECK
@@ -256,12 +309,15 @@ func widenSizes(db *sql.DB) error {
 		`PRAGMA foreign_keys=OFF`,
 		`CREATE TABLE racks_new (
 			id        INTEGER PRIMARY KEY AUTOINCREMENT,
+			site_id   INTEGER NOT NULL DEFAULT 1,
 			name      TEXT    NOT NULL UNIQUE,
 			size      INTEGER NOT NULL CHECK (size IN (2, 4, 10, 20)),
-			ip_offset INTEGER NOT NULL UNIQUE,
+			ip_offset INTEGER NOT NULL,
 			location  TEXT    NOT NULL DEFAULT '',
-			created   TEXT    NOT NULL)`,
-		`INSERT INTO racks_new SELECT id,name,size,ip_offset,location,created FROM racks`,
+			created   TEXT    NOT NULL,
+			UNIQUE (site_id, ip_offset))`,
+		`INSERT INTO racks_new(id,site_id,name,size,ip_offset,location,created)
+			SELECT id,site_id,name,size,ip_offset,location,created FROM racks`,
 		`DROP TABLE racks`,
 		`ALTER TABLE racks_new RENAME TO racks`,
 		`PRAGMA foreign_keys=ON`,
@@ -413,6 +469,114 @@ func (a *App) bladeSamples(serial string, window time.Duration) ([]Sample, error
 		out = append(out, sm)
 	}
 	return out, rows.Err()
+}
+
+// createSite adds a site. A site is a broadcast domain with a name: two
+// racks in one network belong to one site, two networks are two sites, and
+// the decision which is which is the operator's, not the code's.
+func (a *App) createSite(st Site) (int64, error) {
+	if st.Name == "" {
+		return 0, me("err.sitename")
+	}
+	if !validNetBase(st.NetBase) {
+		return 0, me("err.sitenet")
+	}
+	if st.PoolFrom <= 0 || st.PoolTo <= st.PoolFrom || st.PoolTo > 254 {
+		return 0, me("err.sitepool")
+	}
+	res, err := a.db.Exec(`INSERT INTO sites
+		(name,location,net_base,gateway,dns,domain,pool_from,pool_to,
+		 offset_base,offset_step,local,token,created)
+		VALUES(?,?,?,?,?,?,?,?,?,?,0,'',?)`,
+		st.Name, st.Location, st.NetBase, st.Gateway, st.DNS, st.Domain,
+		st.PoolFrom, st.PoolTo, st.OffsetBase, st.OffsetStep, now())
+	if err != nil {
+		return 0, err
+	}
+	a.invalidateNetCache()
+	return res.LastInsertId()
+}
+
+// updateSite changes what a site is, not where its blades sit. The network
+// may be moved: the addresses are derived, so they follow by themselves —
+// but every reservation has to be rewritten afterwards, which is why the
+// caller syncs DHCP.
+func (a *App) updateSite(id int64, st Site) error {
+	if st.Name == "" {
+		return me("err.sitename")
+	}
+	if !validNetBase(st.NetBase) {
+		return me("err.sitenet")
+	}
+	if st.PoolFrom <= 0 || st.PoolTo <= st.PoolFrom || st.PoolTo > 254 {
+		return me("err.sitepool")
+	}
+	_, err := a.db.Exec(`UPDATE sites SET name=?,location=?,net_base=?,gateway=?,
+		dns=?,domain=?,pool_from=?,pool_to=? WHERE id=?`,
+		st.Name, st.Location, st.NetBase, st.Gateway, st.DNS, st.Domain,
+		st.PoolFrom, st.PoolTo, id)
+	if err == nil {
+		a.invalidateNetCache()
+	}
+	return err
+}
+
+// deleteSite refuses while BladeRunners still stand in it, and refuses to
+// remove the last one — without a site the addressing has no ground.
+func (a *App) deleteSite(id int64) error {
+	var n int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM racks WHERE site_id=?`, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return me("err.sitehasracks", n)
+	}
+	var total int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM sites`).Scan(&total); err != nil {
+		return err
+	}
+	if total <= 1 {
+		return me("err.sitelast")
+	}
+	_, err := a.db.Exec(`DELETE FROM sites WHERE id=?`, id)
+	if err == nil {
+		a.invalidateNetCache()
+	}
+	return err
+}
+
+// validNetBase accepts the first three octets of a /24 and nothing else.
+func validNetBase(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || n > 255 || (len(p) > 1 && p[0] == '0') {
+			return false
+		}
+	}
+	return true
+}
+
+// rackCounts tells the interface how full each site is, in one query rather
+// than one per site.
+func (a *App) rackCounts() map[int64]int {
+	out := map[int64]int{}
+	rows, err := a.db.Query(`SELECT site_id, COUNT(*) FROM racks GROUP BY site_id`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var n int
+		if err := rows.Scan(&id, &n); err == nil {
+			out[id] = n
+		}
+	}
+	return out
 }
 
 // ── BladeRunners ─────────────────────────────────────────────────────
@@ -696,7 +860,7 @@ func (a *App) listBlades() ([]Blade, error) {
 	for _, r := range racks {
 		byID[r.ID] = r
 	}
-	netBase := a.netBase()
+	nets := a.siteNets()
 	idx := map[int64]int{}
 	for _, r := range racks {
 		idx[r.ID] = a.rackIndex(r)
@@ -722,7 +886,7 @@ func (a *App) listBlades() ([]Blade, error) {
 	rows.Close()
 
 	for i := range out {
-		decorate(&out[i], byID, netBase, idx)
+		decorate(&out[i], byID, nets, idx)
 	}
 	return out, nil
 }
@@ -742,13 +906,34 @@ func (a *App) getBlade(serial string) (*Blade, error) {
 	for _, r := range racks {
 		idx[r.ID] = a.rackIndex(r)
 	}
-	decorate(b, byID, a.netBase(), idx)
+	decorate(b, byID, a.siteNets(), idx)
 	return b, nil
+}
+
+// siteNet is what a blade's address needs from its site, and nothing more.
+type siteNet struct {
+	Name    string
+	NetBase string
+}
+
+// siteNets reads every site once. Deliberately called before a cursor is
+// opened: decorate must stay free of database access, and with a single
+// connection a nested query would deadlock.
+func (a *App) siteNets() map[int64]siteNet {
+	out := map[int64]siteNet{}
+	sites, err := a.listSites()
+	if err != nil {
+		return out
+	}
+	for _, st := range sites {
+		out[st.ID] = siteNet{Name: st.Name, NetBase: st.NetBase}
+	}
+	return out
 }
 
 // decorate fills in the derived fields. Deliberately free of database access
 // so it stays safe to call while a cursor is open.
-func decorate(b *Blade, racks map[int64]Rack, netBase string, idx map[int64]int) {
+func decorate(b *Blade, racks map[int64]Rack, nets map[int64]siteNet, idx map[int64]int) {
 	if b.RackID == nil || b.Slot == nil {
 		return
 	}
@@ -758,7 +943,10 @@ func decorate(b *Blade, racks map[int64]Rack, netBase string, idx map[int64]int)
 	}
 	b.RackName = r.Name
 	b.RackIdx = idx[r.ID]
-	if *b.Slot >= 1 && *b.Slot <= r.Size {
-		b.IP = fmt.Sprintf("%s.%d", netBase, r.IPOffset+*b.Slot)
+	b.SiteID = r.SiteID
+	sn := nets[r.SiteID]
+	b.SiteName = sn.Name
+	if *b.Slot >= 1 && *b.Slot <= r.Size && sn.NetBase != "" {
+		b.IP = fmt.Sprintf("%s.%d", sn.NetBase, r.IPOffset+*b.Slot)
 	}
 }

@@ -31,6 +31,10 @@ import (
 // netBase returns the local site's network. Once there is more than one site
 // this shortcut is only correct for the local one — everything else has to
 // carry its site along.
+// netBase is the local site's network. It survives as a convenience for the
+// places that legitimately mean "here" — the DHCP pool, the address the
+// blades are told to reach. Anything that speaks about a particular
+// BladeRunner must use that BladeRunner's site instead.
 func (a *App) netBase() string {
 	if st, err := a.localSite(); err == nil {
 		return st.NetBase
@@ -69,10 +73,30 @@ func (a *App) siteNetBase(id int64) string {
 	return v
 }
 
+// siteName is the label a reader recognises, read through the same cache as
+// the networks — a twenty-slot view would otherwise ask for it twenty times.
+func (a *App) siteName(id int64) string {
+	a.netCacheMu.Lock()
+	defer a.netCacheMu.Unlock()
+	if a.nameCache == nil {
+		a.nameCache = map[int64]string{}
+	}
+	if v, ok := a.nameCache[id]; ok {
+		return v
+	}
+	v := ""
+	if st, err := a.getSite(id); err == nil {
+		v = st.Name
+	}
+	a.nameCache[id] = v
+	return v
+}
+
 // invalidateNetCache after every change to sites.
 func (a *App) invalidateNetCache() {
 	a.netCacheMu.Lock()
 	a.netCache = nil
+	a.nameCache = nil
 	a.netCacheMu.Unlock()
 }
 
@@ -206,12 +230,16 @@ type syncResult struct {
 	Removed  []string `json:"removed"`
 	Reloaded bool     `json:"reloaded"`
 	Warning  string   `json:"warning,omitempty"`
+	// Blades belonging to another site, skipped on purpose. Reported rather
+	// than hidden: a reservation that was never written is exactly the kind
+	// of silence that costs an evening.
+	Foreign int `json:"foreign,omitempty"`
 }
 
 func (a *App) syncDHCP() (*syncResult, error) {
 	dir := a.dhcpHostsDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("Verzeichnis %s: %w", dir, err)
+		return nil, fmt.Errorf("directory %s: %w", dir, err)
 	}
 
 	blades, err := a.listBlades()
@@ -222,10 +250,23 @@ func (a *App) syncDHCP() (*syncResult, error) {
 	res := &syncResult{Written: []string{}, Removed: []string{}}
 	want := map[string]bool{}
 
+	// Reservations are written for the local site only. dnsmasq here serves
+	// one broadcast domain; a blade at another site is served by the server
+	// standing in that domain, and writing its address here would be a
+	// reservation nobody can hand out.
+	var localID int64
+	if st, err := a.localSite(); err == nil {
+		localID = st.ID
+	}
+
 	for _, b := range blades {
 		// Without a position there is no fixed address — the dynamic pool
 		// serves those blades.
 		if b.RackID == nil || b.Slot == nil || b.IP == "" {
+			continue
+		}
+		if localID != 0 && b.SiteID != localID {
+			res.Foreign++
 			continue
 		}
 		mac := b.MAC

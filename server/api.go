@@ -82,6 +82,57 @@ func (a *App) hSitesList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, sites)
 }
 
+func (a *App) hSiteCreate(w http.ResponseWriter, r *http.Request) {
+	var in Site
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, 400, "invalid JSON: %v", err)
+		return
+	}
+	if in.OffsetBase == 0 {
+		in.OffsetBase = 100
+	}
+	if in.OffsetStep == 0 {
+		in.OffsetStep = 20
+	}
+	id, err := a.createSite(in)
+	if err != nil {
+		fail(w, 409, "%v", err)
+		return
+	}
+	a.logEvent("", "info", fmt.Sprintf("site %q created (%s.0/24)", in.Name, in.NetBase))
+	st, _ := a.getSite(id)
+	writeJSON(w, 201, st)
+}
+
+func (a *App) hSiteUpdate(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var in Site
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, 400, "invalid JSON: %v", err)
+		return
+	}
+	if err := a.updateSite(id, in); err != nil {
+		fail(w, 409, "%v", err)
+		return
+	}
+	// Addresses are derived from the site, so moving its network moves every
+	// blade in it. The reservations have to follow in the same breath.
+	_, _ = a.syncDHCP()
+	a.logEvent("", "info", "site changed: "+in.Name)
+	st, _ := a.getSite(id)
+	writeJSON(w, 200, st)
+}
+
+func (a *App) hSiteDelete(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := a.deleteSite(id); err != nil {
+		fail(w, 409, "%v", err)
+		return
+	}
+	a.logEvent("", "warn", "site removed")
+	writeJSON(w, 200, map[string]string{"deleted": "1"})
+}
+
 func (a *App) hRacksList(w http.ResponseWriter, r *http.Request) {
 	racks, err := a.listRacks()
 	if err != nil {
@@ -876,7 +927,8 @@ func (a *App) hHealth(w http.ResponseWriter, r *http.Request) {
 		"blades":    len(blades),
 		"by_state":  counts,
 		"net_warns": a.checkNet(LangEN),
-		"net_base":  a.netBase(),
+		"net_base":  a.netBase(), // the local site, kept for compatibility
+		"sites":     a.siteNets(),
 	})
 }
 
