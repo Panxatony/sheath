@@ -263,6 +263,16 @@ var catalog = map[string]map[Lang]string{
 	"site.moved":  {LangEN: "%q moved to %q — new block %s–%s", LangDE: "%q nach %q verschoben — neuer Block %s–%s"},
 	"site.assign": {LangEN: "Site", LangDE: "Standort"},
 
+	"img.downstream": {
+		LangEN: "Raspberry Pi kernel — device tree overlays apply, fan and LED telemetry work",
+		LangDE: "Raspberry-Pi-Kernel — Device-Tree-Overlays greifen, Lüfter- und LED-Telemetrie funktioniert"},
+	"img.upstream": {
+		LangEN: "upstream kernel — the firmware applies no device tree directive, so no fan or LED telemetry",
+		LangDE: "Upstream-Kernel — die Firmware wendet keine Device-Tree-Anweisung an, also keine Lüfter- oder LED-Telemetrie"},
+	"img.unknownkernel": {
+		LangEN: "kernel flavour not recorded",
+		LangDE: "Kernel-Variante nicht hinterlegt"},
+
 	"stock.detail": {LangEN: "Images at this site", LangDE: "Images an diesem Standort"},
 	"stock.hint": {
 		LangEN: "what this site holds, against what its blades were assigned",
@@ -336,6 +346,12 @@ var catalog = map[string]map[Lang]string{
 	"msg.sitesaved":     {LangEN: "Site %q saved.", LangDE: "Standort %q gespeichert."},
 	"msg.siteremoved":   {LangEN: "Site removed.", LangDE: "Standort entfernt."},
 	"msg.dhcprewritten": {LangEN: "%d reservations rewritten", LangDE: "%d Reservierungen neu geschrieben"},
+
+	"act.identifyoff":    {LangEN: "Stop identify", LangDE: "Identify beenden"},
+	"act.identifyofftip": {LangEN: "ends the identify state, as the blade's own button would", LangDE: "beendet den Identify-Zustand, wie es der Knopf am Blade täte"},
+	"act.stealthon":      {LangEN: "Stealth on", LangDE: "Stealth an"},
+	"act.stealthoff":     {LangEN: "Stealth off", LangDE: "Stealth aus"},
+	"act.stealthtip":     {LangEN: "turns every LED on this blade off", LangDE: "schaltet alle LEDs dieses Blades aus"},
 
 	"hw.soc":       {LangEN: "SoC", LangDE: "SoC"},
 	"hw.airflow":   {LangEN: "Airflow", LangDE: "Luft"},

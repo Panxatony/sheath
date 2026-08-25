@@ -42,13 +42,18 @@ type slotView struct {
 	// Stage 1: what the compute-blade-agent knows about this piece of
 	// hardware. Empty strings mean "not reported", which is different from
 	// zero and is rendered as a dash.
-	Airflow  string
-	FanPct   string
-	FanUnit  string
-	Module   string
-	BladeSt  string
-	Stealth  string
-	Buttons  string
+	Airflow string
+	FanPct  string
+	FanUnit string
+	Module  string
+	BladeSt string
+	Stealth string
+	Buttons string
+	// What the blade's LEDs are doing right now, so the overlay can offer the
+	// other direction rather than a button that repeats the current state.
+	Identifying bool
+	Stealthy    bool
+
 	SparkSoc template.HTML
 	SparkFan template.HTML
 	SparkNum int
@@ -214,13 +219,15 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 			Fan:     fanText(l, h),
 			SLED:    statusLED,
 
-			Airflow: hwText(h, "airflow_temp_c", "°C"),
-			FanPct:  hwText(h, "fan_percent", "%"),
-			FanUnit: hwString(h, "fan_unit"),
-			Module:  hwString(h, "module"),
-			BladeSt: hwString(h, "blade_state"),
-			Stealth: onOff(l, h["stealth"]),
-			Buttons: hwText(h, "button_events", ""),
+			Airflow:     hwText(h, "airflow_temp_c", "°C"),
+			FanPct:      hwText(h, "fan_percent", "%"),
+			FanUnit:     hwString(h, "fan_unit"),
+			Module:      hwString(h, "module"),
+			BladeSt:     hwString(h, "blade_state"),
+			Stealth:     onOff(l, h["stealth"]),
+			Identifying: hwString(h, "blade_state") == "identify",
+			Stealthy:    truthy(h["stealth"]),
+			Buttons:     hwText(h, "button_events", ""),
 		}
 		// The curve of the last two days, drawn from the stored samples.
 		if hist, err := a.bladeSamples(b.Serial, a.globalPolicy().sampleKeep()); err == nil && len(hist) > 1 {
@@ -926,6 +933,18 @@ func sparkline(values []float64, class string) template.HTML {
 		class, w, h, b.String()))
 }
 
+// truthy reads a reported flag the way both the agent and the metrics write
+// it: as a bool from JSON, or as a 0/1 gauge.
+func truthy(v any) bool {
+	switch t := v.(type) {
+	case bool:
+		return t
+	case float64:
+		return t != 0
+	}
+	return false
+}
+
 // onOff renders a reported flag. Anything not reported stays a dash rather
 // than becoming a confident "off".
 func onOff(l Lang, v any) string {
@@ -1034,7 +1053,7 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 	}
 	to := bladePage(b, r)
 	switch kind {
-	case "identify", "reboot", "reimage":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage":
 	default:
 		redirectMsg(w, r, to, "err", T(l, "err.unknownact"))
 		return
@@ -1901,17 +1920,31 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   {{$img := .Image}}
                   <select id="img{{.Slot}}" name="image">
                     <option value="">{{t $top.L "rk.none"}}</option>
-                    {{range $top.Images}}<option value="{{.ID}}"{{if eq .ID $img}} selected{{end}}>{{.ID}}</option>{{end}}
+                    {{range $top.Images}}<option value="{{.ID}}"{{if eq .ID $img}} selected{{end}}>{{.ID}}{{if .Kernel}} · {{.Kernel}}{{end}}</option>{{end}}
                   </select>
                   <button class="mini ghost" type="submit">{{t $top.L "rk.set"}}</button>
                 </form>
 
                 <div class="menu-sep"></div>
                 <div class="menu-row">
+                  {{if .Identifying}}
+                  <form method="post" action="/blades/{{.Serial}}/actions/identify_off">
+                    <button class="mini" type="submit" title="{{t $top.L "act.identifyofftip"}}">{{t $top.L "act.identifyoff"}}</button></form>
+                  {{else}}
                   <form method="post" action="/blades/{{.Serial}}/actions/identify">
                     <button class="mini ghost" type="submit" title="{{t $top.L "act.identifytip"}}">{{t $top.L "act.identify"}}</button></form>
+                  {{end}}
                   <form method="post" action="/blades/{{.Serial}}/actions/reboot">
                     <button class="mini ghost" type="submit">{{t $top.L "act.reboot"}}</button></form>
+                </div>
+                <div class="menu-row">
+                  {{if .Stealthy}}
+                  <form method="post" action="/blades/{{.Serial}}/actions/stealth_off">
+                    <button class="mini ghost" type="submit">{{t $top.L "act.stealthoff"}}</button></form>
+                  {{else}}
+                  <form method="post" action="/blades/{{.Serial}}/actions/stealth_on">
+                    <button class="mini ghost" type="submit" title="{{t $top.L "act.stealthtip"}}">{{t $top.L "act.stealthon"}}</button></form>
+                  {{end}}
                 </div>
                 <div class="menu-row">
                   <form method="post" action="/blades/{{.Serial}}/actions/reimage">
@@ -2311,6 +2344,21 @@ func (a *App) hUISitePolicy(w http.ResponseWriter, r *http.Request) {
 	redirectMsg(w, r, to, "msg", T(l, "msg.policysaved"))
 }
 
+// imageNote says what an image will and will not be able to do once written.
+// The point is the fan unit: it hangs off UART5, which has to be enabled by
+// the firmware, and an image running the upstream kernel never gets that far
+// — the firmware applies no device-tree directive there at all. Saying so in
+// the catalogue costs one line; finding it out costs an evening.
+func imageNote(l Lang, im Image) (string, string) {
+	switch im.Kernel {
+	case "upstream":
+		return T(l, "img.upstream"), "warn"
+	case "downstream":
+		return T(l, "img.downstream"), "ok"
+	}
+	return T(l, "img.unknownkernel"), "off"
+}
+
 // ── Site detail ──────────────────────────────────────────────────────
 //
 // One site, in full: what stands in it, what it holds, and how it is doing.
@@ -2319,16 +2367,18 @@ func (a *App) hUISitePolicy(w http.ResponseWriter, r *http.Request) {
 // someone needs to know which image, how big, and who is waiting for it.
 
 type stockRow struct {
-	ImageID  string
-	State    string // translated
-	SLED     string
-	Here     string // size on the site
-	Catalog  string // size in the catalogue
-	Complete bool
-	Wanted   int // blades at this site assigned to this image
-	Waiting  int // of those, still waiting for their installation
-	Note     string
-	Seen     string
+	ImageID    string
+	Kernel     string
+	KernelNote string
+	State      string // translated
+	SLED       string
+	Here       string // size on the site
+	Catalog    string // size in the catalogue
+	Complete   bool
+	Wanted     int // blades at this site assigned to this image
+	Waiting    int // of those, still waiting for their installation
+	Note       string
+	Seen       string
 }
 
 func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
@@ -2391,6 +2441,10 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 		seen[imgID] = true
 		row := stockRow{ImageID: imgID, Wanted: wanted[imgID], Waiting: waiting[imgID]}
 		cat, okCat := inCatalog[imgID]
+		if okCat {
+			row.Kernel = cat.Kernel
+			row.KernelNote, _ = imageNote(l, cat)
+		}
 		if okCat && cat.Bytes > 0 {
 			row.Catalog = human(cat.Bytes)
 		}
@@ -2496,6 +2550,7 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
     <tbody>{{$l := .L}}{{range .Stock}}
       <tr>
         <td class="mono">{{.ImageID}}
+          {{if .Kernel}}<div class="mono sub2">{{.KernelNote}}</div>{{end}}
           {{if .Note}}<div class="mono sub2">{{.Note}}</div>{{end}}</td>
         <td><span class="chip {{.SLED}}">{{.State}}</span></td>
         <td class="mono num">{{if .Here}}{{.Here}}{{else}}—{{end}}

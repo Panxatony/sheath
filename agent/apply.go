@@ -497,12 +497,23 @@ func applyBlockTo(path string, lines []string, create bool) (bool, error) {
 	// Lines that already stand somewhere else in the file are left alone —
 	// a hand-made dtoverlay must not be duplicated, and duplicating it can
 	// change what the firmware does.
+	//
+	// Section headers are the exception. config.txt is filtered: everything
+	// after "[cm4]" applies to a CM4 only, and the compute-blade
+	// documentation asks for exactly that around the fan unit's UART. A
+	// header already standing somewhere else says nothing about our block, so
+	// headers are always written — and a block that opens one should close it
+	// with "[all]", or whatever is appended after us inherits the filter.
 	var missing []string
 	body := stripBlock(old)
 	for _, l := range lines {
-		if !hasLine(body, l) {
+		if strings.HasPrefix(strings.TrimSpace(l), "[") || !hasLine(body, l) {
 			missing = append(missing, l)
 		}
+	}
+	// A block of nothing but headers changes nothing.
+	if onlySections(missing) {
+		missing = nil
 	}
 	if len(missing) == 0 {
 		// Everything present outside our block: drop the block if we still
@@ -546,6 +557,17 @@ func hasLine(body, want string) bool {
 		}
 	}
 	return false
+}
+
+// onlySections reports whether a set of lines carries no setting at all.
+func onlySections(lines []string) bool {
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if t != "" && !strings.HasPrefix(t, "[") {
+			return false
+		}
+	}
+	return true
 }
 
 func stripBlock(s string) string {
@@ -712,11 +734,41 @@ func systemctlIs(verb, unit string) string {
 // identify makes the edge LED blink. Only the compute-blade-agent can do
 // that; if it is missing that is worth reporting but not this agent's
 // failure.
-func identify() error {
+// identify turns the blade's identify LED on, or ends the state again.
+// Ending it is "confirm" in compute-blade's own vocabulary: the state is
+// meant to be dismissed by a person pressing the button on the blade they
+// were looking for, and doing it from here is the same act at a distance.
+func identify(on bool) error {
+	args := []string{"set", "identify"}
+	if !on {
+		args = append(args, "--confirm")
+	}
+	return bladectl(args...)
+}
+
+// stealth turns every LED on the blade off, or on again.
+func stealth(on bool) error {
+	args := []string{"set", "stealth"}
+	if !on {
+		args = append(args, "--disable")
+	}
+	return bladectl(args...)
+}
+
+func bladectl(args ...string) error {
 	if _, err := exec.LookPath("bladectl"); err != nil {
 		return fmt.Errorf("bladectl not present — is compute-blade-agent installed?")
 	}
-	out, err := exec.Command("bladectl", "set", "identify").CombinedOutput()
+	cmd := exec.Command("bladectl", args...)
+	// A systemd service has no HOME, and bladectl looks for its configuration
+	// under ~/.config/bladectl — with an empty HOME that becomes /.config,
+	// where nothing is. The agent runs as root, so root's home is the honest
+	// answer rather than a guess.
+	cmd.Env = os.Environ()
+	if os.Getenv("HOME") == "" {
+		cmd.Env = append(cmd.Env, "HOME=/root")
+	}
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, lastLines(string(out), 2))
 	}

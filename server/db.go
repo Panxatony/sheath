@@ -159,6 +159,9 @@ var migrations = []string{
 	`ALTER TABLE racks ADD COLUMN site_id INTEGER NOT NULL DEFAULT 1`,
 	`ALTER TABLE netboot ADD COLUMN site_id INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE sites ADD COLUMN policy_json TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE images ADD COLUMN kernel TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE images ADD COLUMN min_disk INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE images ADD COLUMN verified INTEGER NOT NULL DEFAULT 0`,
 }
 
 const (
@@ -238,6 +241,16 @@ type Image struct {
 	Local   string `json:"local"`
 	Bytes   int64  `json:"bytes"`
 	Created string `json:"created"`
+
+	// What this image can and cannot do. Learned the hard way: Debian's raspi
+	// image runs the upstream kernel, and there the firmware applies no
+	// device-tree directive at all — no dtoverlay, not even a dtparam. So the
+	// smart fan unit stays invisible on it, and nothing about that is
+	// discoverable from the file name. It belongs in the catalogue, where the
+	// interface can say it before someone spends an evening at the rack.
+	Kernel   string `json:"kernel"`   // downstream | upstream | ""
+	MinDisk  int64  `json:"min_disk"` // bytes, 0 = unknown
+	Verified bool   `json:"verified"` // has actually been booted on a blade
 }
 
 func openDB(path string) (*sql.DB, error) {
@@ -806,9 +819,17 @@ func (a *App) requestInstall(serial string) error {
 
 // listImages returns the catalogue. The interface needs it for the per-blade
 // image picker.
+// imageExists says whether the catalogue already knows this id — the
+// difference between creating an entry and touching one.
+func (a *App) imageExists(id string) bool {
+	var n int
+	_ = a.db.QueryRow(`SELECT COUNT(*) FROM images WHERE id=?`, id).Scan(&n)
+	return n > 0
+}
+
 func (a *App) listImages() ([]Image, error) {
-	rows, err := a.db.Query(`SELECT id,url,sha256,seed,os_id,notes,local,bytes,created
-		FROM images ORDER BY id`)
+	rows, err := a.db.Query(`SELECT id,url,sha256,seed,os_id,notes,local,bytes,created,
+		kernel,min_disk,verified FROM images ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -816,10 +837,13 @@ func (a *App) listImages() ([]Image, error) {
 	out := []Image{}
 	for rows.Next() {
 		var i Image
+		var verified int
 		if err := rows.Scan(&i.ID, &i.URL, &i.SHA256, &i.Seed, &i.OSID,
-			&i.Notes, &i.Local, &i.Bytes, &i.Created); err != nil {
+			&i.Notes, &i.Local, &i.Bytes, &i.Created,
+			&i.Kernel, &i.MinDisk, &verified); err != nil {
 			return nil, err
 		}
+		i.Verified = verified != 0
 		out = append(out, i)
 	}
 	return out, rows.Err()

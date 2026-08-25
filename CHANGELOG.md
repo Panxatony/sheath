@@ -6,6 +6,35 @@ on `main`.
 ## Unreleased
 
 ### Added
+- Thresholds and timings are policy, not constants: SoC and disk warn/critical
+  levels, the offline threshold, command expiry and sample interval/retention.
+  Global by default, overridable per site for the health thresholds — a blade
+  in a ventilated rack and one in a warm office do not share the temperature
+  at which someone should be woken. An empty field inherits.
+- Images carry what they can do: `kernel` (downstream or upstream), minimum
+  disk, and whether the image has actually been booted on a blade. The
+  interface says out loud that an upstream-kernel image gets no fan or LED
+  telemetry, because the firmware applies no device-tree directive there —
+  that sentence cost an evening to learn.
+- Identify can be switched off again, not only on, and stealth mode both ways.
+  The overlay offers whichever direction the blade is not currently in. For
+  that, `bladectl` is delivered to the blades like any other binary, along
+  with its client configuration.
+
+### Fixed
+- Writing an image entry overwrote every field the caller did not mention.
+  Setting the kernel flavour by hand wiped URL, checksum, size and local file
+  of all three catalogue entries; the mirror script and a person editing
+  attributes were erasing each other. Fields are only written when the caller
+  says something about them. The damaged entries were restored from a backup
+  and the files on disk.
+- `bladectl` could not find its configuration: it must be called `config.yaml`,
+  and a systemd service has no HOME, so `~/.config` resolved to `/.config`.
+- The agent writes config.txt sections. The compute-blade documentation asks
+  for `[cm4]` around the fan unit's UART, and a block that opens a section
+  closes it with `[all]` so anything appended later is not filtered.
+
+### Added
 - A page per site at `/sites/{id}`: what stands in it, how it is doing, and
   its images in full — which image, what state, how many bytes are here
   against how many the catalogue has, and how many blades at that site are

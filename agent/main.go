@@ -377,8 +377,19 @@ func (a *agent) runCommands() error {
 		log.Printf("command %d: %s", c.ID, c.Kind)
 		switch c.Kind {
 		case "identify":
-			if err := identify(); err != nil {
+			if err := identify(true); err != nil {
 				log.Printf("  identify not possible: %v", err)
+			}
+		case "identify_off":
+			// The identify state is normally ended by someone pressing the
+			// blade's button — that is what it is for. --confirm does the
+			// same from here, for whoever is not standing at the rack.
+			if err := identify(false); err != nil {
+				log.Printf("  identify not stopped: %v", err)
+			}
+		case "stealth_on", "stealth_off":
+			if err := stealth(c.Kind == "stealth_on"); err != nil {
+				log.Printf("  stealth not switched: %v", err)
 			}
 		case "reboot":
 			log.Printf("  rebooting in 5 s")
@@ -420,7 +431,7 @@ func writeState(v string) {
 // rank orders commands so reboots come last.
 func rank(kind string) int {
 	switch kind {
-	case "identify":
+	case "identify", "identify_off", "stealth_on", "stealth_off":
 		return 0
 	case "reimage":
 		return 8

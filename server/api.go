@@ -690,9 +690,9 @@ func (a *App) hBladeDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 	serial, kind := r.PathValue("serial"), r.PathValue("kind")
 	switch kind {
-	case "identify", "reboot", "reimage":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage":
 	default:
-		fail(w, 400, "unknown action %q (identify|reboot|reimage)", kind)
+		fail(w, 400, "unknown action %q (identify|identify_off|stealth_on|stealth_off|reboot|reimage)", kind)
 		return
 	}
 	if _, err := a.getBlade(serial); err != nil {
@@ -1112,15 +1112,36 @@ func (a *App) hImagesCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "id missing or JSON invalid")
 		return
 	}
-	if i.Seed == "" {
+	if i.Seed == "" && !a.imageExists(i.ID) {
 		i.Seed = "generic"
 	}
-	_, err := a.db.Exec(`INSERT INTO images(id,url,sha256,seed,os_id,notes,local,bytes,created)
-		VALUES(?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET url=excluded.url,sha256=excluded.sha256,
-		  seed=excluded.seed,os_id=excluded.os_id,notes=excluded.notes,
-		  local=excluded.local,bytes=excluded.bytes`,
-		i.ID, i.URL, i.SHA256, i.Seed, i.OSID, i.Notes, i.Local, i.Bytes, now())
+	// Every field is only overwritten when the caller actually says something
+	// about it. Two different callers write here — a mirror script that knows
+	// the bytes and nothing about the kernel, and a person setting attributes
+	// who knows nothing about the local file name — and an upsert that takes
+	// the payload literally lets each of them erase the other's work. It did:
+	// setting the kernel flavour by hand wiped url, checksum, size and local
+	// file of every image in one request.
+	verified := 0
+	if i.Verified {
+		verified = 1
+	}
+	_, err := a.db.Exec(`INSERT INTO images(id,url,sha256,seed,os_id,notes,local,bytes,created,
+		  kernel,min_disk,verified)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET
+		  url=CASE WHEN excluded.url<>'' THEN excluded.url ELSE images.url END,
+		  sha256=CASE WHEN excluded.sha256<>'' THEN excluded.sha256 ELSE images.sha256 END,
+		  seed=CASE WHEN excluded.seed<>'' THEN excluded.seed ELSE images.seed END,
+		  os_id=CASE WHEN excluded.os_id<>'' THEN excluded.os_id ELSE images.os_id END,
+		  notes=CASE WHEN excluded.notes<>'' THEN excluded.notes ELSE images.notes END,
+		  local=CASE WHEN excluded.local<>'' THEN excluded.local ELSE images.local END,
+		  bytes=CASE WHEN excluded.bytes<>0 THEN excluded.bytes ELSE images.bytes END,
+		  kernel=CASE WHEN excluded.kernel<>'' THEN excluded.kernel ELSE images.kernel END,
+		  min_disk=CASE WHEN excluded.min_disk<>0 THEN excluded.min_disk ELSE images.min_disk END,
+		  verified=CASE WHEN excluded.verified<>0 THEN excluded.verified ELSE images.verified END`,
+		i.ID, i.URL, i.SHA256, i.Seed, i.OSID, i.Notes, i.Local, i.Bytes, now(),
+		i.Kernel, i.MinDisk, verified)
 	if err != nil {
 		fail(w, 500, "%v", err)
 		return
