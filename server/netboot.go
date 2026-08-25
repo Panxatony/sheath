@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS netboot (
     image      TEXT NOT NULL DEFAULT '',   -- chosen here, collected by the installer
     client     TEXT NOT NULL DEFAULT '',   -- 'netboot' (RPi bootloader) or 'os'
     note       TEXT NOT NULL DEFAULT '',
+    site_id    INTEGER NOT NULL DEFAULT 0,  -- which site saw it
     first_seen TEXT NOT NULL,
     last_seen  TEXT NOT NULL
 );
@@ -72,6 +73,7 @@ type NetbootSession struct {
 	Note      string `json:"note"`
 	FirstSeen string `json:"first_seen"`
 	LastSeen  string `json:"last_seen"`
+	SiteID    int64  `json:"site_id"`
 
 	// derived
 	Known    bool   `json:"known"`     // MAC is known to the inventory
@@ -355,7 +357,8 @@ func (a *App) raiseStage(mac, stage string) {
 // with what the inventory knows about the MAC.
 func (a *App) listNetboot(l Lang) ([]NetbootSession, error) {
 	cutoff := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
-	rows, err := a.db.Query(`SELECT mac,ip,serial,stage,files,last_file,image,client,note,first_seen,last_seen
+	rows, err := a.db.Query(`SELECT mac,ip,serial,stage,files,last_file,image,client,note,
+		first_seen,last_seen,site_id
 		FROM netboot WHERE last_seen >= ? ORDER BY last_seen DESC`, cutoff)
 	if err != nil {
 		return nil, err
@@ -364,7 +367,8 @@ func (a *App) listNetboot(l Lang) ([]NetbootSession, error) {
 	for rows.Next() {
 		var s NetbootSession
 		if err := rows.Scan(&s.MAC, &s.IP, &s.Serial, &s.Stage, &s.Files,
-			&s.LastFile, &s.Image, &s.Client, &s.Note, &s.FirstSeen, &s.LastSeen); err != nil {
+			&s.LastFile, &s.Image, &s.Client, &s.Note, &s.FirstSeen, &s.LastSeen,
+			&s.SiteID); err != nil {
 			rows.Close()
 			return nil, err
 		}

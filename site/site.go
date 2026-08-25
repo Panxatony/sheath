@@ -82,6 +82,17 @@ type site struct {
 	queue  []event
 	online bool
 	relay  *relay
+	stock  []stockItem
+}
+
+// stockItem is one line of "what this site actually holds". The catalogue is
+// central, the bytes are local, and only the site can say which of the two it
+// has.
+type stockItem struct {
+	ImageID string `json:"image_id"`
+	State   string `json:"state"` // absent | fetching | ready | error
+	Bytes   int64  `json:"bytes,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // event is an observation waiting to be reported. They are buffered rather
@@ -262,6 +273,7 @@ func (s *site) report(d *desired) {
 		"blades":     len(d.Blades),
 		"images":     len(d.Images),
 		"dnsmasq_ok": true,
+		"stock":      s.stockHeld(),
 	})
 	req, err := http.NewRequest("POST",
 		fmt.Sprintf("%s/api/v1/site/%d/status", s.cfg.Server, s.cfg.SiteID),
@@ -319,6 +331,18 @@ func (s *site) image(id string) *desiredImage {
 		}
 	}
 	return nil
+}
+
+func (s *site) setStock(in []stockItem) {
+	s.mu.Lock()
+	s.stock = append([]stockItem(nil), in...)
+	s.mu.Unlock()
+}
+
+func (s *site) stockHeld() []stockItem {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]stockItem(nil), s.stock...)
 }
 
 func (s *site) appliedVersion() string {

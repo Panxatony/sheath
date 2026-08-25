@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -267,6 +268,7 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 // ── Overview ─────────────────────────────────────────────────────────
 
 type nbView struct {
+	SiteName string
 	NetbootSession
 	Label     string
 	LED       string
@@ -312,6 +314,9 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		v := nbView{NetbootSession: sn, Label: T(l, "stage."+sn.Stage), LED: stageLED(sn.Stage)}
+		if sn.SiteID != 0 {
+			v.SiteName = a.siteName(sn.SiteID)
+		}
 		// A device that only took an address, and whose request did not come
 		// from the RPi bootloader, never wanted to netboot. That is a
 		// different thing from a failed netboot and must be named
@@ -374,6 +379,8 @@ type siteGroup struct {
 	State  string // translated: online, stale, offline, or no site process
 	SLED   string // colour of the chip
 	Seen   string // how long ago it last spoke
+	Stock  string // what it holds of the images its blades need
+	SkLED  string
 	Racks  []rackView
 	Blades int
 	Used   int
@@ -425,7 +432,37 @@ func siteHealth(l Lang, st Site) (key, led, seen string) {
 	}
 }
 
+// stockText condenses a site's image stock into one line. Ready is the quiet
+// case and says only a number; anything else names itself, because "one image
+// is still being fetched" is the sentence that explains why an installation
+// has not started.
+func stockText(l Lang, in []SiteImageState) (string, string) {
+	if len(in) == 0 {
+		return "—", "off"
+	}
+	ready, fetching, bad := 0, 0, 0
+	for _, im := range in {
+		switch im.State {
+		case "ready":
+			ready++
+		case "fetching":
+			fetching++
+		default:
+			bad++
+		}
+	}
+	switch {
+	case bad > 0:
+		return T(l, "stock.bad", ready, len(in), bad), "crit"
+	case fetching > 0:
+		return T(l, "stock.fetching", ready, len(in), fetching), "warn"
+	default:
+		return T(l, "stock.ready", ready), "ok"
+	}
+}
+
 func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup {
+	stock := a.siteImages()
 	sites, err := a.listSites()
 	if err != nil {
 		return nil
@@ -438,6 +475,7 @@ func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup 
 	out := make([]siteGroup, 0, len(sites))
 	for _, st := range sites {
 		key, led, seen := siteHealth(l, st)
+		sk, skLED := stockText(l, stock[st.ID])
 		out = append(out, siteGroup{
 			Site:  st,
 			Local: st.ID == local,
@@ -446,6 +484,8 @@ func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup 
 			State: T(l, key),
 			SLED:  led,
 			Seen:  seen,
+			Stock: sk,
+			SkLED: skLED,
 		})
 	}
 	for i := range out {
@@ -1586,8 +1626,9 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
 {{if .Racks}}
 {{range .Sites}}
 <div class="card"><div class="card-head">
-  <h2>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
-    <span class="chip {{.SLED}}">{{.State}}{{if .Seen}} · {{.Seen}}{{end}}</span></h2>
+  <h2><a href="/sites/{{.Site.ID}}">{{.Site.Name}}</a>{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
+    <span class="chip {{.SLED}}">{{.State}}{{if .Seen}} · {{.Seen}}{{end}}</span>
+    <span class="chip {{.SkLED}}">{{.Stock}}</span></h2>
   <span class="tag">{{.Net}} · {{t $l "site.pool"}} {{.Pool}}{{if .Site.Location}} · {{.Site.Location}}{{end}}</span></div>
 {{if .Racks}}
 <div class="body"><div class="grid">
@@ -1649,14 +1690,16 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
     <table>
       <thead><tr><th>{{t .L "site.name"}}</th><th>{{t .L "site.net"}}</th>
         <th>{{t .L "site.pool"}}</th><th>{{t .L "meta.racks"}}</th>
+        <th>{{t .L "stock.title"}}</th>
         <th>{{t .L "th.status"}}</th><th></th></tr></thead>
       <tbody>{{$counts := .SiteCounts}}{{range .Sites}}
         <tr>
-          <td>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
+          <td><a class="name" href="/sites/{{.Site.ID}}">{{.Site.Name}}</a>{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
             {{if .Site.Location}}<div class="mono sub2">{{.Site.Location}}</div>{{end}}</td>
           <td class="mono">{{.Net}}</td>
           <td class="mono">{{.Pool}}</td>
           <td class="mono num">{{index $counts .Site.ID}}</td>
+          <td><span class="chip {{.SkLED}}">{{.Stock}}</span></td>
           <td><span class="chip {{.SLED}}">{{.State}}</span>
             {{if .Seen}}<div class="mono sub2">{{.Seen}}</div>{{end}}</td>
           <td class="right">
@@ -1717,6 +1760,7 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
     <span class="tag">{{t .L "nb.count" (len .Netboot)}}{{if .Refresh}}{{t .L "nb.refresh"}}{{end}}</span></div>
   <table>
     <thead><tr><th></th><th>{{t .L "th.device"}}</th>
+      {{if gt (len .Sites) 1}}<th>{{t .L "site.one"}}</th>{{end}}
       <th>{{t .L "th.progress"}}</th><th>{{t .L "th.image"}}</th><th>{{t .L "th.last"}}</th></tr></thead>
     <tbody>
     {{$top := .}}
@@ -1728,6 +1772,9 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
           {{else}}<span class="host">{{t $top.L "nb.unknown"}}</span>{{end}}
           <div class="mono sub2">{{if .IP}}{{.IP}}{{else}}{{.MAC}}{{end}}</div>
         </td>
+        {{if gt (len $top.Sites) 1}}
+        <td class="mono">{{if .SiteName}}{{.SiteName}}{{else}}—{{end}}</td>
+        {{end}}
         <td><span class="chip {{.LED}}">{{.Label}}</span>
           {{if .LeaseOnly}}<div class="mono sub2">{{t $top.L "nb.bootorder"}}</div>{{end}}</td>
         <td>
@@ -2008,6 +2055,8 @@ type topoSite struct {
 	SLED   string
 	Seen   string
 	Net    string
+	Stock  string
+	SkLED  string
 	Racks  int
 	Blades int
 	Cells  []slotCell
@@ -2015,10 +2064,10 @@ type topoSite struct {
 }
 
 const (
-	topoWidth  = 860.0
-	topoRow    = 118.0
-	topoBoxW   = 470.0
-	topoBoxH   = 92.0
+	topoWidth  = 980.0
+	topoRow    = 132.0
+	topoBoxW   = 600.0
+	topoBoxH   = 108.0
 	topoSiteX  = 340.0
 	topoBusX   = 300.0
 	topoTopPad = 28.0
@@ -2039,13 +2088,16 @@ func (a *App) hTopology(w http.ResponseWriter, r *http.Request) {
 		local = st.ID
 	}
 
+	stock := a.siteImages()
 	byID := map[int64]*topoSite{}
 	views := make([]topoSite, 0, len(sites))
 	for _, st := range sites {
 		key, led, seen := siteHealth(l, st)
+		sk, skLED := stockText(l, stock[st.ID])
 		views = append(views, topoSite{
 			Site: st, State: T(l, key), SLED: led, Seen: seen,
-			Net: st.NetBase + ".0/24", Local: st.ID == local,
+			Net: st.NetBase + ".0/24", Stock: sk, SkLED: skLED,
+			Local: st.ID == local,
 		})
 	}
 	for i := range views {
@@ -2115,41 +2167,46 @@ func topoSVG(l Lang, sites []topoSite, baseURL string) template.HTML {
 
 		fmt.Fprintf(&b, `<g class="node site"><rect x="%.0f" y="%.1f" width="%.0f" height="%.0f" rx="4"/>`,
 			topoSiteX, y, topoBoxW, topoBoxH)
+
+		// First line: who this is, and — right-aligned, with the dot beside
+		// the text rather than inside it — how it is doing.
 		label := s.Site.Name
 		if s.Local {
 			label += " · " + T(l, "site.here")
 		}
 		fmt.Fprintf(&b, `<text class="t1" x="%.0f" y="%.1f">%s</text>`,
-			topoSiteX+18, y+26, esc(label))
-		fmt.Fprintf(&b, `<text class="t3" x="%.0f" y="%.1f">%s · %s</text>`,
-			topoSiteX+18, y+46, esc(s.Net),
-			esc(T(l, "map.counts", s.Racks, s.Blades)))
-
-		// State, right-aligned so the eye can run down one column of them.
-		fmt.Fprintf(&b, `<circle class="dot %s" cx="%.0f" cy="%.1f" r="5"/>`,
-			s.SLED, topoSiteX+topoBoxW-104, y+21)
+			topoSiteX+18, y+27, esc(label))
 		state := s.State
 		if s.Seen != "" {
 			state += " · " + s.Seen
 		}
+		fmt.Fprintf(&b, `<circle class="dot %s" cx="%.0f" cy="%.1f" r="5"/>`,
+			s.SLED, topoSiteX+topoBoxW-18, y+22)
 		fmt.Fprintf(&b, `<text class="t3 right" x="%.0f" y="%.1f">%s</text>`,
-			topoSiteX+topoBoxW-18, y+26, esc(state))
+			topoSiteX+topoBoxW-32, y+26, esc(state))
+
+		// Second line the network and what stands in it, third what it holds.
+		// Two lines rather than one, because one ran out of box.
+		fmt.Fprintf(&b, `<text class="t3" x="%.0f" y="%.1f">%s · %s</text>`,
+			topoSiteX+18, y+49, esc(s.Net), esc(T(l, "map.counts", s.Racks, s.Blades)))
+		fmt.Fprintf(&b, `<text class="t3" x="%.0f" y="%.1f">%s</text>`,
+			topoSiteX+18, y+68, esc(s.Stock))
 
 		// One square per slot, in the colour it has on its BladeRunner page.
 		x := topoSiteX + 18
-		cy := y + 62
+		cy := y + 80
 		for j, c := range s.Cells {
-			if j >= 44 {
-				fmt.Fprintf(&b, `<text class="t3" x="%.1f" y="%.1f">…</text>`, x+4, cy+9)
+			if j >= 48 {
+				fmt.Fprintf(&b, `<text class="t3" x="%.1f" y="%.1f">…</text>`, x+4, cy+11)
 				break
 			}
-			fmt.Fprintf(&b, `<rect class="cell %s" x="%.1f" y="%.1f" width="9" height="12" rx="1.5">`+
+			fmt.Fprintf(&b, `<rect class="cell %s" x="%.1f" y="%.1f" width="9" height="13" rx="1.5">`+
 				`<title>%s</title></rect>`, c.Class, x, cy, esc(c.Title))
 			x += 11
 		}
 		if len(s.Cells) == 0 {
 			fmt.Fprintf(&b, `<text class="t3" x="%.0f" y="%.1f">%s</text>`,
-				topoSiteX+18, cy+10, esc(T(l, "site.norack")))
+				topoSiteX+18, cy+11, esc(T(l, "site.norack")))
 		}
 		b.WriteString(`</g>`)
 	}
@@ -2191,14 +2248,15 @@ var topoTmpl = template.Must(template.New("map").Funcs(tmplFuncs).Parse(headHTML
     <table>
       <thead><tr><th>{{t .L "site.name"}}</th><th>{{t .L "site.net"}}</th>
         <th>{{t .L "meta.racks"}}</th><th>{{t .L "meta.blades"}}</th>
-        <th>{{t .L "th.status"}}</th></tr></thead>
+        <th>{{t .L "stock.title"}}</th><th>{{t .L "th.status"}}</th></tr></thead>
       <tbody>{{range .Sites}}
         <tr>
-          <td>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $.L "site.here"}}</span>{{end}}
+          <td><a class="name" href="/sites/{{.Site.ID}}">{{.Site.Name}}</a>{{if .Local}} <span class="chip ok">{{t $.L "site.here"}}</span>{{end}}
             {{if .Site.Location}}<div class="mono sub2">{{.Site.Location}}</div>{{end}}</td>
           <td class="mono">{{.Net}}</td>
           <td class="mono num">{{.Racks}}</td>
           <td class="mono num">{{.Blades}}</td>
+          <td><span class="chip {{.SkLED}}">{{.Stock}}</span></td>
           <td><span class="chip {{.SLED}}">{{.State}}</span>
             {{if .Seen}}<div class="mono sub2">{{.Seen}}</div>{{end}}</td>
         </tr>
@@ -2209,4 +2267,242 @@ var topoTmpl = template.Must(template.New("map").Funcs(tmplFuncs).Parse(headHTML
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
 <span>{{t .L "foot.api"}}</span></footer>
+</div></body></html>`))
+
+// ── Site detail ──────────────────────────────────────────────────────
+//
+// One site, in full: what stands in it, what it holds, and how it is doing.
+// The image stock is the reason this page exists — "two images ready" is
+// enough on an overview and useless when an installation is waiting and
+// someone needs to know which image, how big, and who is waiting for it.
+
+type stockRow struct {
+	ImageID  string
+	State    string // translated
+	SLED     string
+	Here     string // size on the site
+	Catalog  string // size in the catalogue
+	Complete bool
+	Wanted   int // blades at this site assigned to it
+	Note     string
+	Seen     string
+}
+
+func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
+	l := a.resolveLang(w, r)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	st, err := a.getSite(id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	blades, _ := a.listBlades()
+	racks, _ := a.listRacks()
+	images, _ := a.listImages()
+	stock := a.siteImages()[id]
+
+	// Which images the blades here are assigned to, and how many want each.
+	wanted := map[string]int{}
+	used := 0
+	for _, b := range blades {
+		if b.SiteID != id {
+			continue
+		}
+		if b.RackID != nil && b.Slot != nil {
+			used++
+		}
+		if b.Image != "" {
+			wanted[b.Image]++
+		}
+	}
+
+	inCatalog := map[string]Image{}
+	for _, im := range images {
+		inCatalog[im.ID] = im
+	}
+	held := map[string]SiteImageState{}
+	for _, s := range stock {
+		held[s.ImageID] = s
+	}
+
+	// Every image that either stands here or is wanted here. An assigned
+	// image the site has not fetched is the interesting row, and a list of
+	// what the site holds would be missing exactly that one.
+	seen := map[string]bool{}
+	var rows []stockRow
+	add := func(imgID string) {
+		if imgID == "" || seen[imgID] {
+			return
+		}
+		seen[imgID] = true
+		row := stockRow{ImageID: imgID, Wanted: wanted[imgID]}
+		cat, okCat := inCatalog[imgID]
+		if okCat && cat.Bytes > 0 {
+			row.Catalog = human(cat.Bytes)
+		}
+		h, okHeld := held[imgID]
+		switch {
+		case !okHeld:
+			row.State, row.SLED = T(l, "stock.absent"), "off"
+		case h.State == "ready":
+			row.State, row.SLED = T(l, "stock.state.ready"), "ok"
+			row.Here = human(h.Bytes)
+			row.Complete = !okCat || cat.Bytes == 0 || h.Bytes == cat.Bytes
+		case h.State == "fetching":
+			row.State, row.SLED = T(l, "stock.state.fetching"), "warn"
+			row.Here = human(h.Bytes)
+		default:
+			row.State, row.SLED = T(l, "stock.state.error"), "crit"
+			row.Note = h.Note
+		}
+		if okHeld {
+			row.Seen = ago(l, h.TS)
+		}
+		rows = append(rows, row)
+	}
+	for _, s := range stock {
+		add(s.ImageID)
+	}
+	for _, im := range images {
+		if wanted[im.ID] > 0 {
+			add(im.ID)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ImageID < rows[j].ImageID })
+
+	var rvs []rackView
+	for _, rk := range racks {
+		if rk.SiteID == id {
+			rvs = append(rvs, a.buildRackView(rk, blades, l))
+		}
+	}
+
+	key, led, seenAt := siteHealth(l, *st)
+	msg, errMsg := flash(r)
+	render(w, siteTmpl, map[string]any{
+		"L":        l,
+		"Path":     "/sites/" + strconv.FormatInt(id, 10),
+		"S":        *st,
+		"Net":      st.NetBase + ".0/24",
+		"Pool":     fmt.Sprintf(".%d–.%d", st.PoolFrom, st.PoolTo),
+		"State":    T(l, key),
+		"SLED":     led,
+		"Seen":     seenAt,
+		"HasToken": st.Token != "",
+		"Stock":    rows,
+		"Racks":    rvs,
+		"Used":     used,
+		"Msg":      msg,
+		"Err":      errMsg,
+		"Open":     a.adminToken == "",
+	})
+}
+
+// human renders a byte count the way someone reads it out loud.
+func human(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/float64(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.0f MB", float64(n)/float64(1<<20))
+	case n > 0:
+		return fmt.Sprintf("%d B", n)
+	}
+	return "—"
+}
+
+var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTML + `
+<div class="wrap">
+<header class="top"><div class="topbar"><div>
+  <p class="crumb"><a href="/">{{mark}} {{t .L "nav.overview"}}</a> / <a href="/map">{{t .L "nav.map"}}</a> / {{t .L "site.one"}}</p>
+  <h1>{{.S.Name}} <span class="chip {{.SLED}}">{{.State}}{{if .Seen}} · {{.Seen}}{{end}}</span></h1>
+  <p class="sub">{{.Net}} · {{t .L "site.pool"}} {{.Pool}}{{if .S.Location}} · {{.S.Location}}{{end}}</p>
+</div>` + topRight + `</div>
+<div class="meta"><span>{{t .L "meta.racks"}} <b>{{len .Racks}}</b></span>
+<span>{{t .L "meta.used"}} <b>{{.Used}}</b></span>
+<span>{{t .L "stock.title"}} <b>{{len .Stock}}</b></span></div>
+</header>
+
+{{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
+{{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
+{{if not .HasToken}}<div class="bad">{{t .L "site.notoken"}}</div>{{end}}
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "stock.detail"}}</h2>
+    <span class="tag">{{t .L "stock.hint"}}</span></div>
+  {{if .Stock}}
+  <table>
+    <thead><tr><th>{{t .L "th.image"}}</th><th>{{t .L "th.status"}}</th>
+      <th>{{t .L "stock.here"}}</th><th>{{t .L "stock.catalog"}}</th>
+      <th>{{t .L "stock.wanted"}}</th><th>{{t .L "th.last"}}</th></tr></thead>
+    <tbody>{{$l := .L}}{{range .Stock}}
+      <tr>
+        <td class="mono">{{.ImageID}}
+          {{if .Note}}<div class="mono sub2">{{.Note}}</div>{{end}}</td>
+        <td><span class="chip {{.SLED}}">{{.State}}</span></td>
+        <td class="mono num">{{if .Here}}{{.Here}}{{else}}—{{end}}
+          {{if and .Here (not .Complete)}}<div class="mono sub2">{{t $l "stock.partial"}}</div>{{end}}</td>
+        <td class="mono num">{{if .Catalog}}{{.Catalog}}{{else}}—{{end}}</td>
+        <td class="mono num">{{if .Wanted}}{{.Wanted}}{{else}}—{{end}}</td>
+        <td class="mono">{{if .Seen}}{{.Seen}}{{else}}—{{end}}</td>
+      </tr>
+    {{end}}</tbody>
+  </table>
+  {{else}}
+  <div class="body empty">{{t .L "stock.none"}}</div>
+  {{end}}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "ov.racks"}}</h2></div>
+  {{if .Racks}}
+  <div class="body"><div class="grid">
+  {{$l := .L}}
+  {{range .Racks}}
+    <div class="rackcard">
+      <a class="name" href="/bladerunners/{{.Rack.ID}}">{{.Rack.Name}}</a>
+      <div class="tag" style="margin-top:.3rem">{{t $l "ov.slots" .Rack.Size}}{{if .Rack.Location}} · {{.Rack.Location}}{{end}}</div>
+      <a class="cells" href="/bladerunners/{{.Rack.ID}}" aria-label="{{t $l "ov.occupancy" .Used .Free}}">
+        {{range .Cells}}<span class="cell {{.Class}}" title="{{.Title}}">{{printf "%02d" .Slot}}</span>{{end}}
+      </a>
+      <div class="mono cellnote">{{.From}} – {{.To}}</div>
+      <div class="tag">{{t $l "ov.occupancy" .Used .Free}}</div>
+    </div>
+  {{end}}
+  </div></div>
+  {{else}}
+  <div class="body empty">{{t .L "site.norack"}}</div>
+  {{end}}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "site.edit"}}</h2></div>
+  <div class="body">
+    <form method="post" action="/sites/{{.S.ID}}">
+      <div class="row">
+        <div><label for="n">{{t .L "site.name"}}</label>
+          <input id="n" type="text" name="name" value="{{.S.Name}}" required maxlength="60"></div>
+        <div class="narrow"><label for="net">{{t .L "site.net"}}</label>
+          <input id="net" type="text" name="net_base" value="{{.S.NetBase}}" required
+                 pattern="[0-9]+\.[0-9]+\.[0-9]+"></div>
+        <div><label for="loc">{{t .L "form.location"}}</label>
+          <input id="loc" type="text" name="location" value="{{.S.Location}}" maxlength="60"></div>
+        <div class="narrow"><label for="pf">{{t .L "site.poolfrom"}}</label>
+          <input id="pf" type="number" name="pool_from" value="{{.S.PoolFrom}}" min="1" max="254"></div>
+        <div class="narrow"><label for="pt">{{t .L "site.poolto"}}</label>
+          <input id="pt" type="number" name="pool_to" value="{{.S.PoolTo}}" min="1" max="254"></div>
+        <div class="narrow"><button type="submit">{{t .L "form.save"}}</button></div>
+      </div>
+    </form>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "site.movehint"}}</p>
+  </div>
+</div>
+
+<footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
+<span>{{t .L "site.one"}} {{.S.ID}}</span></footer>
 </div></body></html>`))

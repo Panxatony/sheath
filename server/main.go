@@ -156,6 +156,7 @@ func main() {
 
 	mux.HandleFunc("GET /", app.requireUI(app.hUI))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
+	mux.HandleFunc("GET /sites/{id}", app.requireUI(app.hSitePage))
 	mux.HandleFunc("GET /bladerunners/{id}", app.requireUI(app.hRackPage))
 
 	mux.HandleFunc("POST /sites", app.requireUI(app.hUISiteCreate))

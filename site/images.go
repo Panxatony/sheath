@@ -21,6 +21,9 @@ func (s *site) ensureImages(d *desired) error {
 	if err := os.MkdirAll(s.cfg.ImagesDir, 0o755); err != nil {
 		return err
 	}
+	stock := make([]stockItem, 0, len(d.Images))
+	defer func() { s.setStock(stock) }()
+
 	for _, im := range d.Images {
 		name := im.Local
 		if name == "" {
@@ -29,6 +32,11 @@ func (s *site) ensureImages(d *desired) error {
 		path := filepath.Join(s.cfg.ImagesDir, name)
 
 		if ok, err := s.haveImage(path, im.SHA256, im.Bytes); err == nil && ok {
+			sz := int64(0)
+			if st, serr := os.Stat(path); serr == nil {
+				sz = st.Size()
+			}
+			stock = append(stock, stockItem{ImageID: im.ID, State: "ready", Bytes: sz})
 			continue
 		}
 		// Prefer the copy the centre already holds: it is on the same server
@@ -41,13 +49,23 @@ func (s *site) ensureImages(d *desired) error {
 		log.Printf("image %s: fetching from %s", im.ID, src)
 		s.note("", "info", "fetching image "+im.ID)
 		if s.dry {
+			stock = append(stock, stockItem{ImageID: im.ID, State: "absent"})
 			continue
 		}
+		// Reported as fetching before the first byte moves, because a
+		// gigabyte over a narrow line is a state someone may be waiting on.
+		s.setStock(append(stock, stockItem{ImageID: im.ID, State: "fetching"}))
 		if err := s.fetchImage(src, path, im.SHA256); err != nil {
 			log.Printf("image %s: %v", im.ID, err)
 			s.note("", "warn", "image "+im.ID+" not fetched: "+err.Error())
+			stock = append(stock, stockItem{ImageID: im.ID, State: "error", Note: err.Error()})
 			continue
 		}
+		sz := int64(0)
+		if st, serr := os.Stat(path); serr == nil {
+			sz = st.Size()
+		}
+		stock = append(stock, stockItem{ImageID: im.ID, State: "ready", Bytes: sz})
 		s.note("", "info", "image "+im.ID+" ready")
 	}
 	return nil

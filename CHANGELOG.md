@@ -6,6 +6,23 @@ on `main`.
 ## Unreleased
 
 ### Added
+- A page per site at `/sites/{id}`: what stands in it, how it is doing, and
+  its images in full — which image, what state, how many bytes are here
+  against how many the catalogue has, and how many blades at that site are
+  waiting for it. An image assigned to a blade here but not yet fetched is
+  listed too, because that row is the one that explains a waiting install.
+- Sites report what they actually hold, per image, with state (absent,
+  fetching, ready, error). The overview and the map show it in one line; the
+  site page shows the detail.
+- A netboot session records which site saw it. Two sites may hand out the same
+  address, so a session without its site is one nobody can place.
+
+### Fixed
+- The site box on the map ran out of room: the text overflowed on the right
+  and the state dot sat inside the word. Wider box, two lines, and the dot
+  beside the text rather than in it.
+
+### Added
 - A map at `/map`: the central server, the sites hanging off it, and every
   slot as one square in the colour it has on its BladeRunner page. The line to
   a site carries that link's state — solid while the site reports, dashed once

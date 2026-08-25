@@ -263,6 +263,31 @@ var catalog = map[string]map[Lang]string{
 	"site.moved":  {LangEN: "%q moved to %q — new block %s–%s", LangDE: "%q nach %q verschoben — neuer Block %s–%s"},
 	"site.assign": {LangEN: "Site", LangDE: "Standort"},
 
+	"stock.detail": {LangEN: "Images at this site", LangDE: "Images an diesem Standort"},
+	"stock.hint": {
+		LangEN: "what this site holds, against what its blades were assigned",
+		LangDE: "was dieser Standort hält, gegen das, was seinen Blades zugewiesen ist"},
+	"stock.here":    {LangEN: "Here", LangDE: "Hier"},
+	"stock.catalog": {LangEN: "Catalogue", LangDE: "Katalog"},
+	"stock.wanted":  {LangEN: "Blades waiting", LangDE: "Blades zugewiesen"},
+	"stock.partial": {LangEN: "differs from the catalogue", LangDE: "weicht vom Katalog ab"},
+	"stock.absent":  {LangEN: "not here", LangDE: "nicht hier"},
+	"stock.none": {
+		LangEN: "No image is held here and none is assigned to a blade here.",
+		LangDE: "Hier liegt kein Image, und keinem Blade hier ist eines zugewiesen."},
+	"stock.state.ready":    {LangEN: "ready", LangDE: "vorrätig"},
+	"stock.state.fetching": {LangEN: "fetching", LangDE: "wird geholt"},
+	"stock.state.error":    {LangEN: "failed", LangDE: "fehlgeschlagen"},
+	"site.edit":            {LangEN: "Edit site", LangDE: "Standort bearbeiten"},
+	"site.notoken": {
+		LangEN: "This site has no token, so no site process can speak for it. Issue one with <code>POST /api/v1/sites/{id}/token</code>.",
+		LangDE: "Dieser Standort hat kein Token, also kann kein Standort-Dienst für ihn sprechen. Eines ausstellen mit <code>POST /api/v1/sites/{id}/token</code>."},
+
+	"stock.title":    {LangEN: "Images", LangDE: "Images"},
+	"stock.ready":    {LangEN: "%d image(s) ready", LangDE: "%d Image(s) vorrätig"},
+	"stock.fetching": {LangEN: "%d of %d ready, %d being fetched", LangDE: "%d von %d vorrätig, %d wird geholt"},
+	"stock.bad":      {LangEN: "%d of %d ready, %d failed", LangDE: "%d von %d vorrätig, %d fehlgeschlagen"},
+
 	"site.online":  {LangEN: "online", LangDE: "online"},
 	"site.stale":   {LangEN: "stale", LangDE: "veraltet"},
 	"site.offline": {LangEN: "offline", LangDE: "offline"},

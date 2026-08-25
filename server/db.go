@@ -133,6 +133,20 @@ CREATE TABLE IF NOT EXISTS samples (
     PRIMARY KEY (serial, ts)
 );
 CREATE INDEX IF NOT EXISTS idx_samples_serial_ts ON samples(serial, ts);
+
+-- What a site actually holds. The catalogue is central, the bytes are local,
+-- and the difference between the two is worth showing: an image assigned to a
+-- blade at a site that has not fetched it yet is an installation that will
+-- wait, and saying so beats letting someone find out at the rack.
+CREATE TABLE IF NOT EXISTS site_images (
+    site_id  INTEGER NOT NULL,
+    image_id TEXT    NOT NULL,
+    state    TEXT    NOT NULL DEFAULT 'absent',  -- absent | fetching | ready | error
+    bytes    INTEGER NOT NULL DEFAULT 0,
+    note     TEXT    NOT NULL DEFAULT '',
+    ts       TEXT    NOT NULL,
+    PRIMARY KEY (site_id, image_id)
+);
 `
 
 // install_state separates "this blade has an image assigned" from "this
@@ -143,6 +157,7 @@ var migrations = []string{
 	`ALTER TABLE blades ADD COLUMN install_state TEXT NOT NULL DEFAULT 'idle'`,
 	`ALTER TABLE blades ADD COLUMN installed_at TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE racks ADD COLUMN site_id INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE netboot ADD COLUMN site_id INTEGER NOT NULL DEFAULT 0`,
 }
 
 const (
@@ -577,6 +592,51 @@ func (a *App) rackCounts() map[int64]int {
 		var n int
 		if err := rows.Scan(&id, &n); err == nil {
 			out[id] = n
+		}
+	}
+	return out
+}
+
+// SiteImageState is one line of a site's stock report.
+type SiteImageState struct {
+	ImageID string `json:"image_id"`
+	State   string `json:"state"`
+	Bytes   int64  `json:"bytes"`
+	Note    string `json:"note"`
+	TS      string `json:"ts"`
+}
+
+// recordSiteImages replaces what a site says it holds. Replaced rather than
+// merged: the site is the only authority on its own disk, and an image it no
+// longer mentions is one it no longer has.
+func (a *App) recordSiteImages(siteID int64, in []SiteImageState) {
+	if _, err := a.db.Exec(`DELETE FROM site_images WHERE site_id=?`, siteID); err != nil {
+		return
+	}
+	for _, im := range in {
+		if im.ImageID == "" {
+			continue
+		}
+		_, _ = a.db.Exec(`INSERT OR REPLACE INTO site_images(site_id,image_id,state,bytes,note,ts)
+			VALUES(?,?,?,?,?,?)`, siteID, im.ImageID, im.State, im.Bytes, im.Note, now())
+	}
+}
+
+// siteImages reads the stock of every site in one query — the overview shows
+// them all, and one query per site would be one query too many.
+func (a *App) siteImages() map[int64][]SiteImageState {
+	out := map[int64][]SiteImageState{}
+	rows, err := a.db.Query(`SELECT site_id,image_id,state,bytes,note,ts
+		FROM site_images ORDER BY site_id, image_id`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var im SiteImageState
+		if err := rows.Scan(&id, &im.ImageID, &im.State, &im.Bytes, &im.Note, &im.TS); err == nil {
+			out[id] = append(out[id], im)
 		}
 	}
 	return out

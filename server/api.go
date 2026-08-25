@@ -346,6 +346,9 @@ func (a *App) hSiteEvents(w http.ResponseWriter, r *http.Request) {
 		// log line — the site watched the boot, the centre keeps the state.
 		if e.Stage != "" && e.MAC != "" {
 			a.touchNetboot(e.MAC, e.IP, e.Stage, e.Msg)
+			// Which site saw it. Two sites may hand out the same address, so
+			// a session without its site is a session nobody can place.
+			_, _ = a.db.Exec(`UPDATE netboot SET site_id=? WHERE mac=?`, id, e.MAC)
 			continue
 		}
 		lvl := e.Level
@@ -375,8 +378,14 @@ func (a *App) hSiteStatus(w http.ResponseWriter, r *http.Request) {
 		Images    int    `json:"images"`
 		Note      string `json:"note"`
 		DnsmasqOK bool   `json:"dnsmasq_ok"`
+		// What the site holds on its own disk, which is not the same thing as
+		// what the catalogue says exists.
+		Stock []SiteImageState `json:"stock"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
+	if in.Stock != nil {
+		a.recordSiteImages(id, in.Stock)
+	}
 	a.touchSite(id)
 	skew := ""
 	if in.Clock != "" {
