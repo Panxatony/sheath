@@ -37,6 +37,20 @@ type slotView struct {
 	SLED   string // colour of the status chip
 	Soc    string
 	Fan    string
+
+	// Stage 1: what the compute-blade-agent knows about this piece of
+	// hardware. Empty strings mean "not reported", which is different from
+	// zero and is rendered as a dash.
+	Airflow  string
+	FanPct   string
+	FanUnit  string
+	Module   string
+	BladeSt  string
+	Stealth  string
+	Buttons  string
+	SparkSoc template.HTML
+	SparkFan template.HTML
+	SparkNum int
 }
 
 type rackView struct {
@@ -45,6 +59,7 @@ type rackView struct {
 	To      string
 	Slots   []slotView
 	Cells   []slotCell // compact occupancy strip for the overview
+	Therm   thermView  // stage 2: what the enclosure as a whole is doing
 	Used    int
 	Free    int
 	Percent int
@@ -193,6 +208,29 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 			Soc:     tempValue(l, h, "soc_temp_c"),
 			Fan:     fanText(l, h),
 			SLED:    statusLED,
+
+			Airflow: hwText(h, "airflow_temp_c", "°C"),
+			FanPct:  hwText(h, "fan_percent", "%"),
+			FanUnit: hwString(h, "fan_unit"),
+			Module:  hwString(h, "module"),
+			BladeSt: hwString(h, "blade_state"),
+			Stealth: onOff(l, h["stealth"]),
+			Buttons: hwText(h, "button_events", ""),
+		}
+		// The curve of the last two days, drawn from the stored samples.
+		if hist, err := a.bladeSamples(b.Serial, sampleKeep); err == nil && len(hist) > 1 {
+			var socs, rpms []float64
+			for _, sm := range hist {
+				if sm.Soc >= 0 {
+					socs = append(socs, sm.Soc)
+				}
+				if sm.RPM >= 0 {
+					rpms = append(rpms, sm.RPM)
+				}
+			}
+			sv.SparkSoc = sparkline(socs, "soc")
+			sv.SparkFan = sparkline(rpms, "fan")
+			sv.SparkNum = len(hist)
 		}
 		if statusArg != "" {
 			sv.Status = T(l, statusKey, statusArg)
@@ -214,6 +252,11 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 	if rk.Size > 0 {
 		rv.Percent = rv.Used * 100 / rk.Size
 	}
+	byBlade := map[string]*Blade{}
+	for i := range blades {
+		byBlade[blades[i].Serial] = &blades[i]
+	}
+	rv.Therm = buildTherm(l, rv.Slots, byBlade)
 	return rv
 }
 
@@ -516,6 +559,149 @@ func buildLog(rows []EventRow, l Lang) []logView {
 		out = append(out, lv)
 	}
 	return out
+}
+
+// thermView is the enclosure seen as one thing. A BladeRunner shares its air,
+// so the spread across the slots says more than any single reading: two
+// blades at 45 °C and one at 78 °C is a different machine room from three at
+// 56 °C, and the average hides exactly that.
+type thermView struct {
+	Have    bool
+	Hot     string // hottest slot, as "07"
+	HotTemp string
+	SocLow  string
+	SocHigh string
+	RPMLow  string
+	RPMHigh string
+	Smart   int
+	Fans    int
+}
+
+func buildTherm(l Lang, slots []slotView, blades map[string]*Blade) thermView {
+	var tv thermView
+	var socs, rpms []float64
+	for _, sv := range slots {
+		if sv.Empty {
+			continue
+		}
+		b := blades[sv.Serial]
+		if b == nil {
+			continue
+		}
+		h := healthMap(b)
+		if v, ok := num(h["soc_temp_c"]); ok {
+			socs = append(socs, v)
+			if !tv.Have || v > parseTemp(tv.HotTemp) {
+				tv.Hot = fmt.Sprintf("%02d", sv.Slot)
+				tv.HotTemp = fmt.Sprintf("%.0f", v)
+			}
+			tv.Have = true
+		}
+		if v, ok := num(h["fan_rpm"]); ok && v > 0 {
+			rpms = append(rpms, v)
+		}
+		if u, _ := h["fan_unit"].(string); u != "" {
+			tv.Fans++
+			if u == "smart" {
+				tv.Smart++
+			}
+		}
+	}
+	if len(socs) > 0 {
+		lo, hi := minMax(socs)
+		tv.SocLow, tv.SocHigh = fmt.Sprintf("%.0f", lo), fmt.Sprintf("%.0f", hi)
+	}
+	if len(rpms) > 0 {
+		lo, hi := minMax(rpms)
+		tv.RPMLow, tv.RPMHigh = fmt.Sprintf("%.0f", lo), fmt.Sprintf("%.0f", hi)
+	}
+	return tv
+}
+
+func minMax(v []float64) (float64, float64) {
+	lo, hi := v[0], v[0]
+	for _, x := range v[1:] {
+		if x < lo {
+			lo = x
+		}
+		if x > hi {
+			hi = x
+		}
+	}
+	return lo, hi
+}
+
+func parseTemp(s string) float64 {
+	var f float64
+	_, _ = fmt.Sscanf(s, "%f", &f)
+	return f
+}
+
+// sparkline draws a series as a bare SVG polyline. No library, no script: a
+// path is a string, and the shape of the last two days is all this has to
+// carry. A flat line at the bottom would be a lie about a missing series, so
+// too few points draw nothing at all.
+func sparkline(values []float64, class string) template.HTML {
+	const w, h = 132.0, 26.0
+	if len(values) < 2 {
+		return ""
+	}
+	lo, hi := minMax(values)
+	span := hi - lo
+	if span < 0.5 {
+		// A perfectly flat series still deserves a line, drawn in the middle
+		// rather than jammed against an edge.
+		span = 1
+		lo = lo - 0.5
+	}
+	var b strings.Builder
+	step := (w - 2) / float64(len(values)-1)
+	for i, v := range values {
+		x := 1 + float64(i)*step
+		y := h - 1 - (v-lo)/span*(h-2)
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%.1f,%.1f", x, y)
+	}
+	return template.HTML(fmt.Sprintf(
+		`<svg class="spark %s" viewBox="0 0 %.0f %.0f" preserveAspectRatio="none" `+
+			`role="img" aria-hidden="true"><polyline points="%s"/></svg>`,
+		class, w, h, b.String()))
+}
+
+// onOff renders a reported flag. Anything not reported stays a dash rather
+// than becoming a confident "off".
+func onOff(l Lang, v any) string {
+	switch t := v.(type) {
+	case bool:
+		if t {
+			return T(l, "hw.on")
+		}
+		return T(l, "hw.off")
+	case float64:
+		if t != 0 {
+			return T(l, "hw.on")
+		}
+		return T(l, "hw.off")
+	}
+	return "—"
+}
+
+// hwText renders one reported number, or a dash where nothing was reported.
+func hwText(h map[string]any, key, unit string) string {
+	v, ok := num(h[key])
+	if !ok {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f %s", v, unit)
+}
+
+func hwString(h map[string]any, key string) string {
+	if v, _ := h[key].(string); v != "" {
+		return v
+	}
+	return "—"
 }
 
 func backTo(r *http.Request, fallback string) string {
@@ -1006,6 +1192,20 @@ display:inline-block}
 .acts{display:flex;gap:.35rem;flex-wrap:wrap}
 
 /* ── Slot view ────────────────────────────────────────────────────── */
+.therm{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;margin:.5rem 0 0;
+  font:.85rem/1.6 ui-monospace,monospace;color:var(--ink-2)}
+.therm b{color:var(--ink);font-weight:600}
+.hw{display:grid;grid-template-columns:1fr 1fr;gap:.15rem .9rem;margin:.5rem 0 .2rem;
+  font:.8rem/1.7 ui-monospace,monospace}
+.hw div{display:flex;justify-content:space-between;gap:.6rem}
+.hw span{color:var(--ink-3)}
+.hw b{color:var(--ink);font-weight:600}
+.sparks{margin:.5rem 0 .2rem;font:.75rem/1.5 ui-monospace,monospace;color:var(--ink-3)}
+.sparks div{display:flex;align-items:center;gap:.5rem;justify-content:space-between}
+svg.spark{width:8.25rem;height:1.6rem;overflow:visible}
+svg.spark polyline{fill:none;stroke-width:1.2;vector-effect:non-scaling-stroke}
+svg.spark.soc polyline{stroke:var(--accent)}
+svg.spark.fan polyline{stroke:var(--ok)}
 table.log td{padding:.45rem .9rem;font-size:.92rem}
 table.log td.mono{font:.82rem/1.5 ui-monospace,monospace;color:var(--ink-2)}
 table.log td.nowrap{white-space:nowrap}
@@ -1250,6 +1450,14 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
 </div>` + topRight + `</div>
 <div class="meta"><span>{{t .L "meta.used"}} <b>{{.R.Used}}</b></span>
 <span>{{t .L "meta.free"}} <b>{{.R.Free}}</b></span></div>
+{{if .R.Therm.Have}}
+<div class="therm">
+  <span>{{t .L "hw.hottest"}} <b>{{.R.Therm.Hot}}</b> · {{.R.Therm.HotTemp}} °C</span>
+  <span>{{t .L "hw.socspan"}} <b>{{.R.Therm.SocLow}}–{{.R.Therm.SocHigh}} °C</b></span>
+  {{if .R.Therm.RPMHigh}}<span>{{t .L "hw.rpmspan"}} <b>{{.R.Therm.RPMLow}}–{{.R.Therm.RPMHigh}}</b></span>{{end}}
+  {{if .R.Therm.Fans}}<span>{{t .L "hw.smartfans" .R.Therm.Smart .R.Therm.Fans}}</span>{{end}}
+</div>
+{{end}}
 </header>
 
 {{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
@@ -1330,6 +1538,24 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   <form method="post" action="/blades/{{.Serial}}/unassign">
                     <button class="mini danger" type="submit">{{t $top.L "act.remove"}}</button></form>
                 </div>
+                <div class="menu-sep"></div>
+                <div class="hw">
+                  <div><span>{{t $top.L "hw.soc"}}</span><b>{{.Soc}}</b></div>
+                  <div><span>{{t $top.L "hw.airflow"}}</span><b>{{.Airflow}}</b></div>
+                  <div><span>{{t $top.L "hw.fan"}}</span><b>{{.Fan}}</b></div>
+                  <div><span>{{t $top.L "hw.fantarget"}}</span><b>{{.FanPct}}</b></div>
+                  <div><span>{{t $top.L "hw.fanunit"}}</span><b>{{.FanUnit}}</b></div>
+                  <div><span>{{t $top.L "hw.module"}}</span><b>{{.Module}}</b></div>
+                  <div><span>{{t $top.L "hw.state"}}</span><b>{{.BladeSt}}</b></div>
+                  <div><span>{{t $top.L "hw.stealth"}}</span><b>{{.Stealth}}</b></div>
+                </div>
+                {{if .SparkNum}}
+                <div class="sparks">
+                  <div><span>{{t $top.L "hw.soctrend"}}</span>{{.SparkSoc}}</div>
+                  <div><span>{{t $top.L "hw.fantrend"}}</span>{{.SparkFan}}</div>
+                  <div class="menu-note">{{t $top.L "hw.window" .SparkNum}}</div>
+                </div>
+                {{end}}
                 <div class="menu-note">{{t $top.L "th.install"}}: {{.Install}} · {{t $top.L "th.mac"}} {{.MAC}}</div>
               </div>
             </details>

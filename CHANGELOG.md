@@ -6,6 +6,19 @@ on `main`.
 ## Unreleased
 
 ### Added
+- The BladeRunner page shows what the compute-blade-agent knows. Three levels:
+  the hardware of one slot in its action overlay (SoC, airflow, fan speed and
+  target, fan unit type, module, blade state, stealth); the enclosure as a
+  whole in the header (hottest slot, spread of temperatures and fan speeds,
+  how many slots sit on a smart fan unit) — a BladeRunner shares its air, and
+  the spread says more than any single reading; and the last 48 hours as a
+  sparkline per slot.
+- A `samples` table keeps one measurement per blade every five minutes for two
+  days — about six hundred rows per blade. Written when a blade reports,
+  pruned in the same moment, drawn as a bare SVG polyline with no library and
+  no script.
+
+### Added
 - The agent reports what it changed. Until now the only record of a blade
   being reconfigured — or of the attempt failing — sat in the journal of that
   blade, which is exactly the place you cannot reach when the change that

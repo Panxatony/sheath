@@ -440,6 +440,13 @@ func (a *App) hBladeStatus(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "%v", err)
 		return
 	}
+	// The measurements that move are kept as a thin history, so a slot can be
+	// looked at over time rather than only right now.
+	var hm map[string]any
+	if err := json.Unmarshal([]byte(health), &hm); err == nil {
+		a.recordSample(serial, hm)
+	}
+
 	// What the agent changed goes into the log. Without it, the only record of
 	// a blade being reconfigured — or of the attempt failing — sits in the
 	// journal of that blade, which is exactly the place you cannot reach when

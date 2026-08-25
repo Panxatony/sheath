@@ -782,6 +782,29 @@ The server is one binary, SQLite, no runtime dependencies:
 
 Each entry is a symptom that has actually occurred, its cause, and the fix.
 
+### No fan speed or airflow temperature on a Debian blade
+
+**Symptom.** `compute-blade-agent` fails to start, or reports
+`fan_unit{type="standard"}` although the enclosure has a smart fan unit.
+`/dev/ttyAMA5` does not exist.
+
+**Cause.** The smart fan unit talks over UART5, which has to be enabled by the
+firmware before Linux starts — `dtoverlay=uart5`. Debian's raspi images run
+the *upstream* kernel (`upstream_kernel=1` in `config.txt`) and ship only two
+overlays; the Raspberry Pi overlays are built against the downstream device
+tree. Placing `uart5.dtbo` on the firmware partition and requesting it in
+`config.txt` is not enough: the node stays `disabled` in the running tree,
+which `/sys/firmware/devicetree/base/soc/serial@7e201a00/status` will confirm.
+
+**Fix.** Use an image with the downstream Raspberry Pi kernel — the Ubuntu
+preinstalled server images do, and there the same setting works — or drive the
+blade without fan telemetry. SoC temperature is read from sysfs and keeps
+working either way.
+
+**Note.** Debian also regenerates `config.txt` on kernel updates and says so in
+the file's first line. The agent therefore writes boot settings to
+`/etc/default/raspi-firmware-custom` as well, where they survive.
+
 ### A blade keeps getting a pool address although a reservation exists
 
 **Cause.** The reservation line was rejected. A file in `dhcp-hostsdir` holds

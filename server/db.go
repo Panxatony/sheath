@@ -114,6 +114,20 @@ CREATE TABLE IF NOT EXISTS events (
     msg     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
+
+-- A blade reports every minute; keeping every report would be a database of
+-- weather, not of blades. One sample every five minutes for two days is
+-- enough to see a fan ramping or a slot running hot, and costs about six
+-- hundred rows per blade.
+CREATE TABLE IF NOT EXISTS samples (
+    serial  TEXT NOT NULL,
+    ts      TEXT NOT NULL,
+    soc     REAL,
+    airflow REAL,
+    rpm     REAL,
+    PRIMARY KEY (serial, ts)
+);
+CREATE INDEX IF NOT EXISTS idx_samples_serial_ts ON samples(serial, ts);
 `
 
 // install_state separates "this blade has an image assigned" from "this
@@ -318,6 +332,85 @@ func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
 			return nil, err
 		}
 		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// ── Samples ──────────────────────────────────────────────────────────
+
+const (
+	sampleEvery = 5 * time.Minute
+	sampleKeep  = 48 * time.Hour
+)
+
+// Sample is one measurement of the three values that move.
+type Sample struct {
+	TS      time.Time
+	Soc     float64
+	Airflow float64
+	RPM     float64
+}
+
+// recordSample keeps one measurement per blade per interval. It is called on
+// every status report and is silent about the ones it drops — the point is
+// the shape of the curve, not the density of the points.
+func (a *App) recordSample(serial string, health map[string]any) {
+	soc, hasSoc := num(health["soc_temp_c"])
+	if !hasSoc {
+		soc, hasSoc = num(health["blade_soc_temp_c"])
+	}
+	air, hasAir := num(health["airflow_temp_c"])
+	rpm, hasRPM := num(health["fan_rpm"])
+	if !hasSoc && !hasAir && !hasRPM {
+		return
+	}
+
+	var last string
+	_ = a.db.QueryRow(`SELECT ts FROM samples WHERE serial=? ORDER BY ts DESC LIMIT 1`,
+		serial).Scan(&last)
+	if last != "" {
+		if t, err := time.Parse(time.RFC3339, last); err == nil &&
+			time.Since(t) < sampleEvery {
+			return
+		}
+	}
+
+	nullable := func(v float64, ok bool) any {
+		if !ok {
+			return nil
+		}
+		return v
+	}
+	_, _ = a.db.Exec(`INSERT OR REPLACE INTO samples(serial,ts,soc,airflow,rpm)
+		VALUES(?,?,?,?,?)`, serial, now(),
+		nullable(soc, hasSoc), nullable(air, hasAir), nullable(rpm, hasRPM))
+
+	// Pruned here rather than on a timer: the only thing that grows this
+	// table is a blade reporting, so that is also the only moment it needs
+	// cutting back.
+	_, _ = a.db.Exec(`DELETE FROM samples WHERE serial=? AND ts < ?`,
+		serial, time.Now().UTC().Add(-sampleKeep).Format(time.RFC3339))
+}
+
+// bladeSamples returns the stored measurements of one blade, oldest first.
+func (a *App) bladeSamples(serial string, window time.Duration) ([]Sample, error) {
+	from := time.Now().UTC().Add(-window).Format(time.RFC3339)
+	rows, err := a.db.Query(`SELECT ts,
+		COALESCE(soc,-1), COALESCE(airflow,-1), COALESCE(rpm,-1)
+		FROM samples WHERE serial=? AND ts>=? ORDER BY ts`, serial, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Sample
+	for rows.Next() {
+		var ts string
+		var sm Sample
+		if err := rows.Scan(&ts, &sm.Soc, &sm.Airflow, &sm.RPM); err != nil {
+			return nil, err
+		}
+		sm.TS, _ = time.Parse(time.RFC3339, ts)
+		out = append(out, sm)
 	}
 	return out, rows.Err()
 }
