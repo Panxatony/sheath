@@ -167,6 +167,17 @@ type SiteBlade struct {
 	Slot     int    `json:"slot"`
 	Netboot  bool   `json:"netboot"`
 	Image    string `json:"image,omitempty"`
+
+	// What the blade itself would be told, so the site can answer while the
+	// centre is unreachable. This is the trade-off the site design states
+	// openly: a site sees the configuration and the tokens of its own blades.
+	// End-to-end encryption would cost exactly the offline capability this
+	// exists for, and a site that cannot answer is a site that cannot boot a
+	// blade in a power cut.
+	Token         string         `json:"token,omitempty"`
+	Config        map[string]any `json:"config,omitempty"`
+	ConfigVersion string         `json:"config_version,omitempty"`
+	InstallState  string         `json:"install_state,omitempty"`
 }
 
 // SiteImage is an image the site should hold, because a blade of its own is
@@ -214,11 +225,18 @@ func (a *App) siteDesired(id int64) (*SiteDesired, error) {
 		if host == "" {
 			host = bladeHostname(int64(b.RackIdx), *b.Slot)
 		}
+		cfg, ver := a.mergedConfig(&b)
+		var tok string
+		_ = a.db.QueryRow(`SELECT token FROM blades WHERE serial=?`, b.Serial).Scan(&tok)
 		out.Blades = append(out.Blades, SiteBlade{
 			Serial: b.Serial, MAC: mac, Hostname: host, IP: b.IP,
 			Rack: b.RackName, Slot: *b.Slot,
-			Netboot: b.InstallState == installPending,
-			Image:   b.Image,
+			Netboot:       b.InstallState == installPending,
+			Image:         b.Image,
+			Token:         tok,
+			Config:        cfg,
+			ConfigVersion: ver,
+			InstallState:  b.InstallState,
 		})
 		if b.Image != "" {
 			wantImg[b.Image] = true

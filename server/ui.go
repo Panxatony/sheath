@@ -371,10 +371,38 @@ type siteGroup struct {
 	Local  bool
 	Net    string
 	Pool   string
+	State  string // translated: online, stale, offline, or no site process
+	SLED   string // colour of the chip
+	Seen   string // how long ago it last spoke
 	Racks  []rackView
 	Blades int
 	Used   int
 	Free   int
+}
+
+// siteHealth judges a site by when it last spoke. A site that has never been
+// given a token has no process of its own — that is a state, not a fault, and
+// saying "offline" about it would be wrong.
+func siteHealth(l Lang, st Site) (key, led, seen string) {
+	if st.Token == "" {
+		return "site.noagent", "off", ""
+	}
+	if st.LastSeen == "" {
+		return "site.never", "warn", ""
+	}
+	t, err := time.Parse(time.RFC3339, st.LastSeen)
+	if err != nil {
+		return "site.never", "warn", ""
+	}
+	seen = ago(l, st.LastSeen)
+	switch d := time.Since(t); {
+	case d < 3*time.Minute:
+		return "site.online", "ok", seen
+	case d < 15*time.Minute:
+		return "site.stale", "warn", seen
+	default:
+		return "site.offline", "crit", seen
+	}
 }
 
 func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup {
@@ -389,11 +417,15 @@ func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup 
 	byID := map[int64]*siteGroup{}
 	out := make([]siteGroup, 0, len(sites))
 	for _, st := range sites {
+		key, led, seen := siteHealth(l, st)
 		out = append(out, siteGroup{
 			Site:  st,
 			Local: st.ID == local,
 			Net:   st.NetBase + ".0/24",
 			Pool:  fmt.Sprintf(".%d–.%d", st.PoolFrom, st.PoolTo),
+			State: T(l, key),
+			SLED:  led,
+			Seen:  seen,
 		})
 	}
 	for i := range out {
@@ -1384,6 +1416,17 @@ tr:has(.menu[open]){position:relative;z-index:60}
 .menu-panel form:last-of-type{margin-bottom:0}
 .menu-panel select{flex:1}
 .menu-panel label{margin-bottom:.3rem}
+/* A form with more than one field cannot be a row: the fields shrink to
+   nothing and the labels end up beside them. Those forms stack. */
+.menu-panel form.stack{display:block}
+.menu-panel form.stack label{display:block;margin:.55rem 0 .2rem;
+  font:600 .74rem/1 ui-monospace,monospace;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3)}
+.menu-panel form.stack label:first-child{margin-top:0}
+.menu-panel form.stack input{width:100%;display:block}
+.menu-panel form.stack .menu-row{gap:.4rem;margin:.2rem 0 0}
+.menu-panel form.stack .menu-row input{flex:1;min-width:0}
+.menu-panel form.stack button{margin-top:.7rem}
 .menu-sep{height:1px;background:var(--rule);margin:.7rem 0}
 .menu-row{display:flex;gap:.4rem;margin:0 0 .45rem}
 .menu-row form{flex:1;margin:0}
@@ -1473,7 +1516,8 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
 {{if .Racks}}
 {{range .Sites}}
 <div class="card"><div class="card-head">
-  <h2>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}</h2>
+  <h2>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
+    <span class="chip {{.SLED}}">{{.State}}{{if .Seen}} · {{.Seen}}{{end}}</span></h2>
   <span class="tag">{{.Net}} · {{t $l "site.pool"}} {{.Pool}}{{if .Site.Location}} · {{.Site.Location}}{{end}}</span></div>
 {{if .Racks}}
 <div class="body"><div class="grid">
@@ -1536,7 +1580,8 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
   <div class="body" style="padding:0">
     <table>
       <thead><tr><th>{{t .L "site.name"}}</th><th>{{t .L "site.net"}}</th>
-        <th>{{t .L "site.pool"}}</th><th>{{t .L "meta.racks"}}</th><th></th></tr></thead>
+        <th>{{t .L "site.pool"}}</th><th>{{t .L "meta.racks"}}</th>
+        <th>{{t .L "th.status"}}</th><th></th></tr></thead>
       <tbody>{{$counts := .SiteCounts}}{{range .Sites}}
         <tr>
           <td>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
@@ -1544,11 +1589,13 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
           <td class="mono">{{.Net}}</td>
           <td class="mono">{{.Pool}}</td>
           <td class="mono num">{{index $counts .Site.ID}}</td>
+          <td><span class="chip {{.SLED}}">{{.State}}</span>
+            {{if .Seen}}<div class="mono sub2">{{.Seen}}</div>{{end}}</td>
           <td class="right">
             <details class="menu"><summary title="{{t $l "menu.open"}}">···</summary>
               <div class="menu-panel">
                 <div class="menu-head">{{.Site.Name}}</div>
-                <form method="post" action="/sites/{{.Site.ID}}">
+                <form class="stack" method="post" action="/sites/{{.Site.ID}}">
                   <label>{{t $l "site.name"}}</label>
                   <input type="text" name="name" value="{{.Site.Name}}" required maxlength="60">
                   <label>{{t $l "form.location"}}</label>
@@ -1556,6 +1603,7 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
                   <label>{{t $l "site.net"}}</label>
                   <input type="text" name="net_base" value="{{.Site.NetBase}}" required
                          pattern="[0-9]+\.[0-9]+\.[0-9]+" placeholder="10.0.0">
+                  <label>{{t $l "site.poolrange"}}</label>
                   <div class="menu-row">
                     <input type="number" name="pool_from" value="{{.Site.PoolFrom}}" min="1" max="254"
                            aria-label="{{t $l "site.poolfrom"}}">

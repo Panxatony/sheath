@@ -6,6 +6,25 @@ on `main`.
 ## Unreleased
 
 ### Added
+- The site relays what blades ask for, and answers it alone when the centre is
+  unreachable. Configuration and provisioning come out of the state it holds;
+  images are served from its own cache; reports a blade makes are buffered and
+  handed over in order once someone is listening again. A command it cannot
+  invent — a command is something a person asked for — so an offline site
+  returns none rather than guessing.
+- The desired state carries, for the site's own blades, what those blades
+  would be told: their merged configuration and their token. That is the
+  trade-off the site design states openly — end-to-end encryption would cost
+  exactly the offline capability this exists for.
+- The overview says how each site is doing: online, stale, offline, or "no
+  site process" for a site that was never given a token — which is a state,
+  not a fault.
+
+### Fixed
+- The site edit overlay was unusable: the panel lays its forms out as a row,
+  which suits a single field and turns five into a line of thumbnails.
+
+### Added
 - `rookery-site`, the network presence of one site, as its own program. It
   holds no decisions — which image a blade gets and whether it may netboot is
   decided centrally — but it owns the wire: the DHCP reservations, the netboot

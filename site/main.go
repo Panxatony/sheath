@@ -16,6 +16,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -49,8 +50,10 @@ func main() {
 		tftpDir   = flag.String("tftp", "/srv/rookery/tftp", "TFTP root")
 		stateDir  = flag.String("state", "/var/lib/rookery-site", "where the last desired state is kept")
 		interval  = flag.Duration("interval", 30*time.Second, "interval between two passes")
-		once      = flag.Bool("once", false, "run a single pass and exit")
-		dryRun    = flag.Bool("dry-run", false, "compute everything, write nothing")
+		listen    = flag.String("listen", ":8081",
+			"address for the blade relay; empty turns the relay off")
+		once   = flag.Bool("once", false, "run a single pass and exit")
+		dryRun = flag.Bool("dry-run", false, "compute everything, write nothing")
 	)
 	flag.Parse()
 
@@ -90,6 +93,24 @@ func main() {
 	// The log watcher runs alongside the pull loop: a blade netbooting is an
 	// event on the wire, not something a poll would catch in time.
 	go s.watchLog()
+
+	// The relay is what blades actually talk to. It answers from the cached
+	// state when the centre is away, which is the reason this program exists
+	// as a separate thing at all.
+	if *listen != "" {
+		s.relay = newRelay(s)
+		go func() {
+			log.Printf("relay listening on %s", *listen)
+			srv := &http.Server{
+				Addr:              *listen,
+				Handler:           s.relay.routes(),
+				ReadHeaderTimeout: 10 * time.Second,
+			}
+			if err := srv.ListenAndServe(); err != nil {
+				log.Printf("relay stopped: %v", err)
+			}
+		}()
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

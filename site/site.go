@@ -17,6 +17,37 @@ import (
 // desired is the document the centre hands over. It is written to disk after
 // every change, because the whole point of the split is that this program can
 // still act when the centre is unreachable.
+// desiredBlade is one blade as the centre sees it, including what the blade
+// itself would be told — see the note on tokens in the site design.
+type desiredBlade struct {
+	Serial   string `json:"serial"`
+	MAC      string `json:"mac"`
+	Hostname string `json:"hostname"`
+	IP       string `json:"ip"`
+	Rack     string `json:"rack"`
+	Slot     int    `json:"slot"`
+	Netboot  bool   `json:"netboot"`
+	Image    string `json:"image"`
+
+	Token         string         `json:"token"`
+	Config        map[string]any `json:"config"`
+	ConfigVersion string         `json:"config_version"`
+	InstallState  string         `json:"install_state"`
+}
+
+// desiredImage is an image this site should hold, because a blade of its own
+// is assigned to it.
+type desiredImage struct {
+	ID     string `json:"id"`
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
+	Bytes  int64  `json:"bytes"`
+	Local  string `json:"local"`
+}
+
+// desired is the document the centre hands over. It is written to disk after
+// every change, because the whole point of the split is that this program can
+// still act when the centre is unreachable.
 type desired struct {
 	Site struct {
 		ID       int64  `json:"id"`
@@ -28,24 +59,9 @@ type desired struct {
 		PoolFrom int    `json:"pool_from"`
 		PoolTo   int    `json:"pool_to"`
 	} `json:"site"`
-	Blades []struct {
-		Serial   string `json:"serial"`
-		MAC      string `json:"mac"`
-		Hostname string `json:"hostname"`
-		IP       string `json:"ip"`
-		Rack     string `json:"rack"`
-		Slot     int    `json:"slot"`
-		Netboot  bool   `json:"netboot"`
-		Image    string `json:"image"`
-	} `json:"blades"`
-	Images []struct {
-		ID     string `json:"id"`
-		URL    string `json:"url"`
-		SHA256 string `json:"sha256"`
-		Bytes  int64  `json:"bytes"`
-		Local  string `json:"local"`
-	} `json:"images"`
-	Boot struct {
+	Blades []desiredBlade `json:"blades"`
+	Images []desiredImage `json:"images"`
+	Boot   struct {
 		BootImg    string `json:"boot_img"`
 		SHA256     string `json:"sha256"`
 		CmdlineURL string `json:"cmdline_url"`
@@ -65,6 +81,7 @@ type site struct {
 	mu     sync.Mutex
 	queue  []event
 	online bool
+	relay  *relay
 }
 
 // event is an observation waiting to be reported. They are buffered rather
@@ -102,19 +119,19 @@ func (s *site) pass() error {
 		s.online = false
 		// Fall back to what was last known. Without this the first pass after
 		// a reboot during an outage would do nothing at all.
-		if s.state == nil {
+		if s.stateHeld() == nil {
 			if cached := s.loadState(); cached != nil {
-				s.state = cached
+				s.setState(cached)
 				log.Printf("centre unreachable (%v) — working from the cached state %s",
 					err, cached.Version)
 			} else {
 				return err
 			}
 		}
-		d = s.state
+		d = s.stateHeld()
 	} else {
 		s.online = true
-		s.state = d
+		s.setState(d)
 		if changed {
 			s.saveState(d)
 			log.Printf("new desired state %s: %d blades, %d images",
@@ -133,6 +150,9 @@ func (s *site) pass() error {
 		log.Printf("images: %v", err)
 	}
 	s.flush()
+	if s.online && s.relay != nil {
+		s.relay.drain()
+	}
 	s.report(d)
 	return nil
 }
@@ -155,7 +175,7 @@ func (s *site) fetch() (*desired, bool, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified {
-		return s.state, false, nil
+		return s.stateHeld(), false, nil
 	}
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
@@ -254,6 +274,60 @@ func (s *site) report(d *desired) {
 	if resp, err := s.http.Do(req); err == nil {
 		resp.Body.Close()
 	}
+}
+
+// setState and stateHeld guard the one piece of memory both loops touch: the
+// pull loop replaces it, the relay reads it while answering a blade.
+func (s *site) setState(d *desired) {
+	s.mu.Lock()
+	s.state = d
+	s.mu.Unlock()
+}
+
+func (s *site) stateHeld() *desired {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state
+}
+
+// blade looks up one blade in the state currently held. Returns nil when the
+// site has never heard of it — which is a real answer, not an error: an
+// unknown blade is one the centre has to decide about.
+func (s *site) blade(serial string) *desiredBlade {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state == nil {
+		return nil
+	}
+	for i := range s.state.Blades {
+		if s.state.Blades[i].Serial == serial {
+			return &s.state.Blades[i]
+		}
+	}
+	return nil
+}
+
+func (s *site) image(id string) *desiredImage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state == nil {
+		return nil
+	}
+	for i := range s.state.Images {
+		if s.state.Images[i].ID == id {
+			return &s.state.Images[i]
+		}
+	}
+	return nil
+}
+
+func (s *site) appliedVersion() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state == nil {
+		return ""
+	}
+	return s.state.Version
 }
 
 // ── The cached state ─────────────────────────────────────────────────
