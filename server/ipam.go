@@ -237,6 +237,13 @@ type syncResult struct {
 }
 
 func (a *App) syncDHCP() (*syncResult, error) {
+	// Where a rookery-site owns the wire, the reservations are its business.
+	// Writing them from here as well would mean two programs owning one
+	// directory, and the loser would be whichever wrote last.
+	if !a.localDHCP {
+		return &syncResult{Written: []string{}, Removed: []string{},
+			Warning: "written by rookery-site, not here"}, nil
+	}
 	dir := a.dhcpHostsDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("directory %s: %w", dir, err)

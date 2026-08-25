@@ -1,0 +1,27 @@
+[Unit]
+Description=Rookery site — the network presence of one site
+Documentation=https://github.com/Panxatony/rookery
+After=network-online.target dnsmasq.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root, because it writes into the dnsmasq host directory and the TFTP root,
+# and reloads dnsmasq. The blast radius is one site's network configuration,
+# which is exactly what this program is for.
+User=root
+ExecStart=/usr/local/bin/rookery-site \
+    --server=http://127.0.0.1:8080 \
+    --site=1 \
+    --token-file=/etc/rookery-site/token \
+    --dhcp-hosts=/etc/rookery/dhcp-hosts \
+    --dnsmasq-log=/srv/rookery/logs/dnsmasq.log \
+    --images=/srv/rookery/images \
+    --tftp=/srv/rookery/tftp \
+    --state=/var/lib/rookery-site \
+    --interval=30s
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

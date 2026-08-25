@@ -6,6 +6,27 @@ on `main`.
 ## Unreleased
 
 ### Added
+- `rookery-site`, the network presence of one site, as its own program. It
+  holds no decisions — which image a blade gets and whether it may netboot is
+  decided centrally — but it owns the wire: the DHCP reservations, the netboot
+  switch per blade, the image cache, and the boot payload in the TFTP root.
+  It watches the dnsmasq log and reports what it saw; observations are
+  buffered when the centre is unreachable, and the last desired state is kept
+  on disk so a site keeps working through an outage.
+- The site interface on the server: `GET /api/v1/site/{id}/desired` with an
+  ETag, `POST /api/v1/site/{id}/events` (batched) and
+  `POST /api/v1/site/{id}/status`, authenticated by the site's own token —
+  a site may act for itself and for nothing else. `POST /api/v1/sites/{id}/token`
+  issues or rotates that token.
+- `GET /boot/` serves the netboot payload, so a site can offer the same
+  installer without holding any build tooling.
+
+### Changed
+- `-local-dhcp=false` hands the wire to a site process: the server then
+  neither writes reservations nor tails the dnsmasq log. Two programs owning
+  one directory would mean the loser is whoever wrote last.
+
+### Added
 - Sites are complete as a model and visible as a thing. The overview groups
   BladeRunners under their site with that site's network and pool; a site can
   be created, renamed, moved to another network or removed from the interface

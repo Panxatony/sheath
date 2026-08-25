@@ -17,6 +17,7 @@ type App struct {
 	db         *sql.DB
 	adminToken string
 	baseURL    string
+	localDHCP  bool
 	imagesDir  string
 	sess       *sessions
 
@@ -28,12 +29,16 @@ type App struct {
 
 func main() {
 	var (
-		addr       = flag.String("addr", ":8080", "address the server listens on")
-		dbPath     = flag.String("db", "/srv/rookery/data/rookery.db", "path to the SQLite file")
-		imagesDir  = flag.String("images", "/srv/rookery/images", "directory holding the OS images")
-		agentDir   = flag.String("agent", "/srv/rookery/agent", "directory holding the agent binary")
-		baseURL    = flag.String("base-url", "", "base URL reachable from the blades (default: http://<net_base>.10:8080)")
-		netBase    = flag.String("net-base", "", "base of the blade network, e.g. 10.0.0 (needed on first start only)")
+		addr      = flag.String("addr", ":8080", "address the server listens on")
+		dbPath    = flag.String("db", "/srv/rookery/data/rookery.db", "path to the SQLite file")
+		imagesDir = flag.String("images", "/srv/rookery/images", "directory holding the OS images")
+		agentDir  = flag.String("agent", "/srv/rookery/agent", "directory holding the agent binary")
+		baseURL   = flag.String("base-url", "", "base URL reachable from the blades (default: http://<net_base>.10:8080)")
+		netBase   = flag.String("net-base", "", "base of the blade network, e.g. 10.0.0 (needed on first start only)")
+		localDHCP = flag.Bool("local-dhcp", true,
+			"write dnsmasq reservations and watch the log here; turn off where a rookery-site does it")
+		tftpDir = flag.String("tftp", "/srv/rookery/tftp",
+			"TFTP root, served to sites over HTTP so they can offer the same payload")
 		dnsmasqLog = flag.String("dnsmasq-log", "/srv/rookery/logs/dnsmasq.log",
 			"dnsmasq log file; Rookery reads it to spot blades that are booting")
 	)
@@ -86,6 +91,13 @@ func main() {
 	mux.HandleFunc("POST /api/v1/sites", app.requireAdmin(app.hSiteCreate))
 	mux.HandleFunc("PUT /api/v1/sites/{id}", app.requireAdmin(app.hSiteUpdate))
 	mux.HandleFunc("DELETE /api/v1/sites/{id}", app.requireAdmin(app.hSiteDelete))
+	mux.HandleFunc("POST /api/v1/sites/{id}/token", app.requireAdmin(app.hSiteToken))
+
+	// The site interface. Authenticated with the site's own token, not the
+	// admin token: a site may act for itself and for nothing else.
+	mux.HandleFunc("GET /api/v1/site/{id}/desired", app.hSiteDesired)
+	mux.HandleFunc("POST /api/v1/site/{id}/events", app.hSiteEvents)
+	mux.HandleFunc("POST /api/v1/site/{id}/status", app.hSiteStatus)
 	mux.HandleFunc("GET /api/v1/bladerunners", app.requireAdmin(app.hRacksList))
 	mux.HandleFunc("POST /api/v1/bladerunners", app.requireAdmin(app.hRacksCreate))
 	mux.HandleFunc("PUT /api/v1/bladerunners/{id}", app.requireAdmin(app.hRackUpdate))
@@ -120,6 +132,12 @@ func main() {
 	// ── Serve images (streamed by the mini-OS over HTTP) ──
 	mux.Handle("GET /images/", http.StripPrefix("/images/",
 		http.FileServer(http.Dir(*imagesDir))))
+
+	// ── Netboot payload, so a site can offer the same one ──
+	// A site holds no build tooling; it fetches the payload the centre built
+	// and puts it in its own TFTP root.
+	mux.Handle("GET /boot/", http.StripPrefix("/boot/",
+		http.FileServer(http.Dir(*tftpDir))))
 
 	// ── Agent binary for offline seeding ──
 	// The installer fetches it here and drops it into the freshly written
@@ -181,8 +199,15 @@ func main() {
 	// Mark blades that have not checked in for a while as offline.
 	go app.reaper()
 	// Tail dnsmasq: that is how Rookery sees a blade netbooting, before any
-	// operating system runs on it.
-	go app.watchDnsmasqLog(*dnsmasqLog)
+	// operating system runs on it. Where a rookery-site owns the wire it does
+	// the watching and reports what it saw, and doing it twice would mean two
+	// programs writing the same records.
+	app.localDHCP = *localDHCP
+	if app.localDHCP {
+		go app.watchDnsmasqLog(*dnsmasqLog)
+	} else {
+		log.Printf("local DHCP handling off — a rookery-site owns the wire here")
+	}
 
 	srv := &http.Server{
 		Addr:              *addr,

@@ -133,6 +133,265 @@ func (a *App) hSiteDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"deleted": "1"})
 }
 
+// ── The site interface ───────────────────────────────────────────────
+//
+// A site is the network presence: it hands out addresses, gates netboot,
+// serves images and watches the wire. It holds no decisions — which image a
+// blade gets is decided centrally — but it must be able to act on the last
+// decision it heard, including while the line to the centre is down.
+//
+// Three endpoints carry that: the desired state it should realise, the
+// observations it made, and a heartbeat saying it is still there.
+
+// SiteDesired is everything a site needs to serve its blades without asking
+// again. Deliberately self-contained: a site that has this document can run
+// through a WAN outage.
+type SiteDesired struct {
+	Site     Site           `json:"site"`
+	Blades   []SiteBlade    `json:"blades"`
+	Images   []SiteImage    `json:"images"`
+	Boot     SiteBoot       `json:"boot"`
+	Version  string         `json:"version"`
+	Produced string         `json:"produced"`
+	Extra    map[string]any `json:"extra,omitempty"`
+}
+
+// SiteBlade is one reservation plus the one bit that decides what happens at
+// the next power-on: whether netboot is armed.
+type SiteBlade struct {
+	Serial   string `json:"serial"`
+	MAC      string `json:"mac"`
+	Hostname string `json:"hostname"`
+	IP       string `json:"ip"`
+	Rack     string `json:"rack"`
+	Slot     int    `json:"slot"`
+	Netboot  bool   `json:"netboot"`
+	Image    string `json:"image,omitempty"`
+}
+
+// SiteImage is an image the site should hold, because a blade of its own is
+// assigned to it. The bytes cross the site link once, not once per blade.
+type SiteImage struct {
+	ID     string `json:"id"`
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
+	Bytes  int64  `json:"bytes"`
+	Local  string `json:"local,omitempty"`
+}
+
+// SiteBoot is the netboot payload the site should offer over TFTP.
+type SiteBoot struct {
+	BootImg    string `json:"boot_img"`
+	SHA256     string `json:"sha256"`
+	CmdlineURL string `json:"cmdline_url"`
+	ServerURL  string `json:"server_url"`
+}
+
+func (a *App) siteDesired(id int64) (*SiteDesired, error) {
+	st, err := a.getSite(id)
+	if err != nil {
+		return nil, err
+	}
+	blades, err := a.listBlades()
+	if err != nil {
+		return nil, err
+	}
+	out := &SiteDesired{Site: *st, Produced: now()}
+	// The token is the site's own credential; it must not travel back to it
+	// inside a document that may be cached on disk.
+	out.Site.Token = ""
+
+	wantImg := map[string]bool{}
+	for _, b := range blades {
+		if b.SiteID != id || b.RackID == nil || b.Slot == nil || b.IP == "" {
+			continue
+		}
+		mac := b.MAC
+		if mac == "" {
+			mac = bladeMAC(int64(b.RackIdx), *b.Slot)
+		}
+		host := b.Hostname
+		if host == "" {
+			host = bladeHostname(int64(b.RackIdx), *b.Slot)
+		}
+		out.Blades = append(out.Blades, SiteBlade{
+			Serial: b.Serial, MAC: mac, Hostname: host, IP: b.IP,
+			Rack: b.RackName, Slot: *b.Slot,
+			Netboot: b.InstallState == installPending,
+			Image:   b.Image,
+		})
+		if b.Image != "" {
+			wantImg[b.Image] = true
+		}
+	}
+	sort.Slice(out.Blades, func(i, j int) bool { return out.Blades[i].IP < out.Blades[j].IP })
+
+	images, _ := a.listImages()
+	for _, im := range images {
+		if !wantImg[im.ID] {
+			continue
+		}
+		out.Images = append(out.Images, SiteImage{
+			ID: im.ID, URL: im.URL, SHA256: im.SHA256, Bytes: im.Bytes, Local: im.Local,
+		})
+	}
+
+	out.Boot = SiteBoot{
+		BootImg:    a.baseURL + "/boot/boot.img",
+		CmdlineURL: a.baseURL + "/boot/cmdline.txt",
+		ServerURL:  a.baseURL,
+	}
+
+	// The version is the content, hashed — but only the part that is content.
+	// last_seen changes on every request the site makes, so hashing the site
+	// row whole would hand out a new version every thirty seconds and make
+	// the conditional request pointless.
+	raw, _ := json.Marshal(struct {
+		Net, GW, DNS, Domain string
+		From, To             int
+		B                    []SiteBlade
+		I                    []SiteImage
+		T                    SiteBoot
+	}{st.NetBase, st.Gateway, st.DNS, st.Domain, st.PoolFrom, st.PoolTo,
+		out.Blades, out.Images, out.Boot})
+	sum := sha256.Sum256(raw)
+	out.Version = "sha256:" + hex.EncodeToString(sum[:])[:16]
+	return out, nil
+}
+
+// requireSite authenticates a site by its own token. A site may act for
+// itself and for nothing else — the id in the path and the token have to
+// agree.
+func (a *App) requireSite(r *http.Request, id int64) error {
+	st, err := a.getSite(id)
+	if err != nil {
+		return fmt.Errorf("unknown site")
+	}
+	if st.Token == "" {
+		return fmt.Errorf("site %d has no token yet", id)
+	}
+	given := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(given), []byte(st.Token)) != 1 {
+		return fmt.Errorf("site token missing or wrong")
+	}
+	return nil
+}
+
+func (a *App) hSiteDesired(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := a.requireSite(r, id); err != nil {
+		fail(w, 401, "%v", err)
+		return
+	}
+	d, err := a.siteDesired(id)
+	if err != nil {
+		fail(w, 404, "%v", err)
+		return
+	}
+	// Unchanged is the common case; say so in four bytes rather than in a
+	// document that repeats what the site already has.
+	if match := r.Header.Get("If-None-Match"); match != "" && match == d.Version {
+		a.touchSite(id)
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	a.touchSite(id)
+	w.Header().Set("ETag", d.Version)
+	writeJSON(w, 200, d)
+}
+
+// hSiteEvents takes what the site saw. Batched on purpose: a site reports
+// what happened while it was alone, and that may be a hundred lines at once.
+func (a *App) hSiteEvents(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := a.requireSite(r, id); err != nil {
+		fail(w, 401, "%v", err)
+		return
+	}
+	var in struct {
+		Events []struct {
+			TS     string `json:"ts"`
+			Serial string `json:"serial"`
+			Level  string `json:"level"`
+			Msg    string `json:"msg"`
+			Stage  string `json:"stage"`
+			MAC    string `json:"mac"`
+			IP     string `json:"ip"`
+		} `json:"events"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, 400, "invalid JSON: %v", err)
+		return
+	}
+	for _, e := range in.Events {
+		// An observation about a MAC on the wire is a netboot session, not a
+		// log line — the site watched the boot, the centre keeps the state.
+		if e.Stage != "" && e.MAC != "" {
+			a.touchNetboot(e.MAC, e.IP, e.Stage, e.Msg)
+			continue
+		}
+		lvl := e.Level
+		if lvl == "" {
+			lvl = "info"
+		}
+		a.logEvent(e.Serial, lvl, "site: "+e.Msg)
+	}
+	a.touchSite(id)
+	writeJSON(w, 200, map[string]int{"accepted": len(in.Events)})
+}
+
+// hSiteStatus is the heartbeat. It also carries the site's own clock, because
+// commands expire after fifteen minutes and two clocks that disagree expire
+// them wrongly.
+func (a *App) hSiteStatus(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err := a.requireSite(r, id); err != nil {
+		fail(w, 401, "%v", err)
+		return
+	}
+	var in struct {
+		Version   string `json:"version"`
+		Applied   string `json:"applied"`
+		Clock     string `json:"clock"`
+		Blades    int    `json:"blades"`
+		Images    int    `json:"images"`
+		Note      string `json:"note"`
+		DnsmasqOK bool   `json:"dnsmasq_ok"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	a.touchSite(id)
+	skew := ""
+	if in.Clock != "" {
+		if t, err := time.Parse(time.RFC3339, in.Clock); err == nil {
+			if d := time.Since(t); d > time.Minute || d < -time.Minute {
+				skew = fmt.Sprintf(" (clock off by %s)", d.Round(time.Second))
+			}
+		}
+	}
+	if in.Note != "" || skew != "" {
+		a.logEvent("", "info", fmt.Sprintf("site %d: %s%s", id, in.Note, skew))
+	}
+	writeJSON(w, 200, map[string]string{"ok": "1"})
+}
+
+// hSiteToken issues or rotates a site's credential. Shown once — it is stored
+// as it is, and a site that lost it gets a new one rather than the old one
+// back.
+func (a *App) hSiteToken(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	tok := newToken()
+	if _, err := a.db.Exec(`UPDATE sites SET token=? WHERE id=?`, tok, id); err != nil {
+		fail(w, 500, "%v", err)
+		return
+	}
+	a.logEvent("", "warn", fmt.Sprintf("site %d: token issued", id))
+	writeJSON(w, 200, map[string]string{"site_id": strconv.FormatInt(id, 10), "token": tok})
+}
+
+func (a *App) touchSite(id int64) {
+	_, _ = a.db.Exec(`UPDATE sites SET last_seen=? WHERE id=?`, now(), id)
+}
+
 func (a *App) hRacksList(w http.ResponseWriter, r *http.Request) {
 	racks, err := a.listRacks()
 	if err != nil {

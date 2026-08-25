@@ -165,8 +165,11 @@ type Site struct {
 	OffsetBase int    `json:"offset_base"`
 	OffsetStep int    `json:"offset_step"`
 	Local      bool   `json:"local"`
-	LastSeen   string `json:"last_seen"`
-	Created    string `json:"created"`
+	// Token is the site's own credential. Never serialised outwards — the
+	// desired state a site holds on disk must not contain the key to itself.
+	Token    string `json:"-"`
+	LastSeen string `json:"last_seen"`
+	Created  string `json:"created"`
 }
 
 type Rack struct {
@@ -738,14 +741,14 @@ func (a *App) listImages() ([]Image, error) {
 // ── Sites ────────────────────────────────────────────────────────────
 
 const siteCols = `id,name,location,net_base,gateway,dns,domain,
-	pool_from,pool_to,offset_base,offset_step,local,last_seen,created`
+	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created`
 
 func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	var st Site
 	var local int
 	err := sc.Scan(&st.ID, &st.Name, &st.Location, &st.NetBase, &st.Gateway, &st.DNS,
 		&st.Domain, &st.PoolFrom, &st.PoolTo, &st.OffsetBase, &st.OffsetStep,
-		&local, &st.LastSeen, &st.Created)
+		&local, &st.Token, &st.LastSeen, &st.Created)
 	if err != nil {
 		return nil, err
 	}
