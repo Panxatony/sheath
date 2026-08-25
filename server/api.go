@@ -417,6 +417,7 @@ func (a *App) hBladeStatus(w http.ResponseWriter, r *http.Request) {
 		Facts         json.RawMessage `json:"facts"`
 		Health        json.RawMessage `json:"health"`
 		ConfigApplied string          `json:"config_applied"`
+		Changes       []string        `json:"changes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, 400, "invalid JSON: %v", err)
@@ -439,6 +440,18 @@ func (a *App) hBladeStatus(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "%v", err)
 		return
 	}
+	// What the agent changed goes into the log. Without it, the only record of
+	// a blade being reconfigured — or of the attempt failing — sits in the
+	// journal of that blade, which is exactly the place you cannot reach when
+	// the change that failed was the one that opens the door.
+	for _, c := range in.Changes {
+		lvl := "info"
+		if strings.HasPrefix(c, "FAILED") {
+			lvl = "warn"
+		}
+		a.logEvent(serial, lvl, "agent: "+c)
+	}
+
 	writeJSON(w, 200, map[string]string{"ok": "1"})
 }
 

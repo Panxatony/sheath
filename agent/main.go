@@ -48,7 +48,8 @@ type Config struct {
 type agent struct {
 	cfg     Config
 	http    *http.Client
-	applied string // last applied config version
+	applied string   // last applied config version
+	pending []string // changes from the last apply, waiting to be reported
 }
 
 func main() {
@@ -256,6 +257,14 @@ func (a *agent) report() error {
 		"health":         collectHealth(),
 		"config_applied": a.applied,
 	}
+	// What the agent changed belongs where the fleet is watched, not only in
+	// the journal of the machine it changed. Handed over once, then cleared:
+	// a change reported every minute would read as a change happening every
+	// minute.
+	if len(a.pending) > 0 {
+		payload["changes"] = a.pending
+		a.pending = nil
+	}
 	_, err := a.do("POST", "/api/v1/blades/"+a.cfg.Serial+"/status", payload, nil, nil)
 	return err
 }
@@ -296,11 +305,14 @@ func (a *agent) syncConfig() error {
 		for _, c := range changes {
 			log.Printf("  %s", c)
 		}
+		a.pending = append(a.pending, changes...)
+		a.pending = append(a.pending, "FAILED: "+err.Error())
 		return err
 	}
 	if len(changes) == 0 {
 		log.Printf("nothing to do — state already matches")
 	}
+	a.pending = append(a.pending, changes...)
 	for _, c := range changes {
 		log.Printf("  %s", c)
 	}

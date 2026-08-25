@@ -93,8 +93,32 @@ sudo chroot "$MNT" /bin/sh -c "
 say "clearing the machine identity"
 sudo sh -c ": > $MNT/etc/machine-id"
 sudo rm -f "$MNT/var/lib/dbus/machine-id"
-# Host keys belong to a host, not to an image.
+# Host keys belong to a host, not to an image — every blade written from this
+# one would otherwise present the same identity. Removing them is not enough,
+# though: sshd refuses to start without keys and Debian's sshd-keygen does not
+# reliably step in, so a unit that regenerates them takes their place.
 sudo rm -f "$MNT"/etc/ssh/ssh_host_*
+sudo tee "$MNT/etc/systemd/system/rookery-sshkeys.service" >/dev/null <<'UNIT'
+[Unit]
+Description=Generate SSH host keys if they are missing
+Before=ssh.service ssh.socket
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# ssh-keygen -A creates only what is not there, so this is idempotent.
+ExecStart=/usr/bin/ssh-keygen -A
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo chroot "$MNT" systemctl enable rookery-sshkeys.service >/dev/null 2>&1 ||
+  sudo ln -sf /etc/systemd/system/rookery-sshkeys.service \
+    "$MNT/etc/systemd/system/multi-user.target.wants/rookery-sshkeys.service"
+# The package's own enablement does not survive every chroot, so make sure.
+sudo chroot "$MNT" systemctl enable ssh.service >/dev/null 2>&1 ||
+  sudo ln -sf /lib/systemd/system/ssh.service \
+    "$MNT/etc/systemd/system/multi-user.target.wants/ssh.service"
 
 sudo rm -f "$MNT/etc/resolv.conf"
 sudo ln -sf ../run/systemd/resolve/stub-resolv.conf "$MNT/etc/resolv.conf"

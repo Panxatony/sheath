@@ -450,14 +450,45 @@ func bootConfigPath() string {
 	return ""
 }
 
+// raspiFirmwareCustom is where Debian wants boot settings. Its config.txt
+// says "Do not modify this file" and means it: the raspi-firmware package
+// regenerates it on every kernel update and would drop anything written
+// there. Writing both places is the honest answer — the custom file so the
+// setting survives, config.txt so it takes effect at the next boot rather
+// than at the next kernel update.
+const raspiFirmwareCustom = "/etc/default/raspi-firmware-custom"
+
 func applyBootConfig(lines []string) (bool, error) {
+	changed := false
+	if _, err := os.Stat("/etc/default/raspi-firmware"); err == nil {
+		c, err := applyBlockTo(raspiFirmwareCustom, lines, true)
+		if err != nil {
+			return false, err
+		}
+		changed = c
+	}
+
 	path := bootConfigPath()
 	if path == "" {
+		if changed {
+			return true, nil
+		}
 		return false, errors.New("no config.txt found (neither /boot/firmware nor /boot)")
 	}
+	c, err := applyBlockTo(path, lines, false)
+	return changed || c, err
+}
+
+// applyBlockTo keeps a marked block of lines at the end of a file. create
+// says whether the file may be brought into existence — config.txt must
+// already be there, the Debian custom file need not be.
+func applyBlockTo(path string, lines []string, create bool) (bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return false, err
+		if !create || !os.IsNotExist(err) {
+			return false, err
+		}
+		raw = nil
 	}
 	old := string(raw)
 

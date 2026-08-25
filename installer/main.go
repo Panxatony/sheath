@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -136,6 +137,19 @@ func run() error {
 
 	// The partition table is new; the kernel does not know it yet.
 	rereadPartitions(target)
+
+	// An image is built for the smallest disk it must fit; this one is 500 GB.
+	// Growing the last partition here means the blade does not have to be
+	// taught to do it later — Debian's fstab carries x-systemd.growfs and
+	// Ubuntu runs cloud-init's growpart, so both grow the filesystem into the
+	// space at first boot.
+	if grown, err := growLastPartition(target); err != nil {
+		logf("Partition not grown: %v", err)
+		c.note("partition not grown: %v", err)
+	} else if grown > 0 {
+		logf("Last partition grown by %s", human(grown))
+		c.note("last partition grown by %s", human(grown))
+	}
 
 	if err := c.seed(job, target); err != nil {
 		// Not a hard failure: the image is correctly on the disk. Without a
@@ -574,6 +588,78 @@ func blockSize(dev string) (uint64, error) {
 		return 0, errno
 	}
 	return sz, nil
+}
+
+// growLastPartition extends the partition that sits furthest out on the disk
+// to the end of the device, and reports how many bytes it gained.
+//
+// "Furthest out" rather than "highest number": Debian numbers its firmware
+// partition 15 and puts it in front of root, so the numbering says nothing
+// about the order on the disk.
+//
+// sfdisk does the work — the mini OS has it, and it also moves the backup GPT
+// header to the new end of the disk, which hand-written sector arithmetic
+// would forget.
+func growLastPartition(target string) (int64, error) {
+	parts, err := partitionsOf(target)
+	if err != nil {
+		return 0, err
+	}
+	base := filepath.Base(target)
+
+	var lastName string
+	var lastStart, lastSize int64 = -1, 0
+	for _, p := range parts {
+		n := filepath.Base(p)
+		start, err1 := sysfsInt("/sys/class/block/" + n + "/start")
+		size, err2 := sysfsInt("/sys/class/block/" + n + "/size")
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		if start > lastStart {
+			lastStart, lastSize, lastName = start, size, n
+		}
+	}
+	if lastName == "" {
+		return 0, errors.New("no partition with a readable start sector")
+	}
+	total, err := sysfsInt("/sys/class/block/" + base + "/size")
+	if err != nil {
+		return 0, err
+	}
+	// Sectors of 512 bytes, as /sys reports them regardless of the device's
+	// own sector size.
+	free := (total - (lastStart + lastSize)) * 512
+	if free < 256<<20 {
+		return 0, nil
+	}
+
+	num := strings.TrimPrefix(lastName, base)
+	num = strings.TrimPrefix(num, "p")
+	cmd := exec.Command("sfdisk", "--no-reread", "--force", "-N", num, target)
+	cmd.Stdin = strings.NewReader(", +\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return 0, fmt.Errorf("%v: %s", err, strings.TrimSpace(tail(string(out), 200)))
+	}
+	rereadPartitions(target)
+	return free, nil
+}
+
+// tail keeps the last n characters — sfdisk is chatty, and the interesting
+// part of a failure is at the end.
+func tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
+}
+
+func sysfsInt(path string) (int64, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
 }
 
 // rereadPartitions asks the kernel to re-read the partition table. Without
