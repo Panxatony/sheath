@@ -158,6 +158,7 @@ var migrations = []string{
 	`ALTER TABLE blades ADD COLUMN installed_at TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE racks ADD COLUMN site_id INTEGER NOT NULL DEFAULT 1`,
 	`ALTER TABLE netboot ADD COLUMN site_id INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE sites ADD COLUMN policy_json TEXT NOT NULL DEFAULT ''`,
 }
 
 const (
@@ -412,11 +413,6 @@ func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
 
 // ── Samples ──────────────────────────────────────────────────────────
 
-const (
-	sampleEvery = 5 * time.Minute
-	sampleKeep  = 48 * time.Hour
-)
-
 // Sample is one measurement of the three values that move.
 type Sample struct {
 	TS      time.Time
@@ -442,9 +438,10 @@ func (a *App) recordSample(serial string, health map[string]any) {
 	var last string
 	_ = a.db.QueryRow(`SELECT ts FROM samples WHERE serial=? ORDER BY ts DESC LIMIT 1`,
 		serial).Scan(&last)
+	pol := a.globalPolicy()
 	if last != "" {
 		if t, err := time.Parse(time.RFC3339, last); err == nil &&
-			time.Since(t) < sampleEvery {
+			time.Since(t) < pol.sampleEvery() {
 			return
 		}
 	}
@@ -463,7 +460,7 @@ func (a *App) recordSample(serial string, health map[string]any) {
 	// table is a blade reporting, so that is also the only moment it needs
 	// cutting back.
 	_, _ = a.db.Exec(`DELETE FROM samples WHERE serial=? AND ts < ?`,
-		serial, time.Now().UTC().Add(-sampleKeep).Format(time.RFC3339))
+		serial, time.Now().UTC().Add(-pol.sampleKeep()).Format(time.RFC3339))
 }
 
 // bladeSamples returns the stored measurements of one blade, oldest first.

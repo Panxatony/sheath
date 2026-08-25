@@ -404,7 +404,14 @@ func (l healthLevel) chip() string {
 // evalHealth judges the reported values. The thresholds come from the
 // architecture proposal and sit together here so they can be adjusted in one
 // place.
-func evalHealth(b *Blade) (healthLevel, []error) {
+func (a *App) evalHealth(b *Blade) (healthLevel, []error) {
+	return evalHealthWith(b, a.sitePolicy(b.SiteID))
+}
+
+// evalHealthWith judges the reported values against one policy. Split out so
+// the judgement stays a pure function of (values, thresholds) — that is the
+// part worth reading twice.
+func evalHealthWith(b *Blade, p Policy) (healthLevel, []error) {
 	var h map[string]any
 	if len(b.Health) > 0 {
 		_ = json.Unmarshal(b.Health, &h)
@@ -427,20 +434,20 @@ func evalHealth(b *Blade) (healthLevel, []error) {
 
 	if v, ok := num(h["soc_temp_c"]); ok {
 		switch {
-		case v > 80:
+		case v > p.SocCrit:
 			raise(hCrit, me("health.soc", v))
-		case v > 70:
+		case v > p.SocWarn:
 			raise(hWarn, me("health.soc", v))
 		}
 	}
-	if v, ok := num(h["nvme_temp_c"]); ok && v > 70 {
+	if v, ok := num(h["nvme_temp_c"]); ok && v > p.NVMeWarn {
 		raise(hWarn, me("health.nvme", v))
 	}
 	if v, ok := num(h["disk_used_pct"]); ok {
 		switch {
-		case v > 95:
+		case v > p.DiskCrit:
 			raise(hCrit, me("health.disk", v))
-		case v > 85:
+		case v > p.DiskWarn:
 			raise(hWarn, me("health.disk", v))
 		}
 	}

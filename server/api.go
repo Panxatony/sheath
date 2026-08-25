@@ -419,6 +419,39 @@ func (a *App) touchSite(id int64) {
 	_, _ = a.db.Exec(`UPDATE sites SET last_seen=? WHERE id=?`, now(), id)
 }
 
+func (a *App) hPolicyGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, a.globalPolicy())
+}
+
+func (a *App) hPolicyPut(w http.ResponseWriter, r *http.Request) {
+	var in Policy
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, 400, "invalid JSON: %v", err)
+		return
+	}
+	if err := a.setGlobalPolicy(in.fill(a.globalPolicy())); err != nil {
+		fail(w, 500, "%v", err)
+		return
+	}
+	a.logEvent("", "info", "policy changed")
+	writeJSON(w, 200, a.globalPolicy())
+}
+
+func (a *App) hSitePolicyPut(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var in Policy
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, 400, "invalid JSON: %v", err)
+		return
+	}
+	if err := a.setSitePolicy(id, in); err != nil {
+		fail(w, 500, "%v", err)
+		return
+	}
+	a.logEvent("", "info", fmt.Sprintf("policy of site %d changed", id))
+	writeJSON(w, 200, a.sitePolicy(id))
+}
+
 func (a *App) hRacksList(w http.ResponseWriter, r *http.Request) {
 	racks, err := a.listRacks()
 	if err != nil {
@@ -805,7 +838,8 @@ func (a *App) hBladeStatus(w http.ResponseWriter, r *http.Request) {
 // then all fire at once. That is exactly what happened on the agent's first
 // start: seven-hour-old test entries, four of them "reimage", triggered an
 // immediate reboot. A command nobody expects any more must not run.
-const commandTTL = 15 * time.Minute
+// The default lives in defaultPolicy now, so an installation can set its own
+// without a rebuild.
 
 func (a *App) hBladeCommands(w http.ResponseWriter, r *http.Request) {
 	serial := r.PathValue("serial")
@@ -815,12 +849,13 @@ func (a *App) hBladeCommands(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear expired commands before handing anything out.
-	cutoff := time.Now().UTC().Add(-commandTTL).Format(time.RFC3339)
+	ttl := a.globalPolicy().commandTTL()
+	cutoff := time.Now().UTC().Add(-ttl).Format(time.RFC3339)
 	if res, err := a.db.Exec(`UPDATE commands SET taken=? WHERE serial=? AND taken='' AND created < ?`,
 		now()+" (abgelaufen)", serial, cutoff); err == nil {
 		if n, _ := res.RowsAffected(); n > 0 {
 			a.logEvent(serial, "warn",
-				fmt.Sprintf("%d command(s) expired — older than %s", n, commandTTL))
+				fmt.Sprintf("%d command(s) expired — older than %s", n, ttl))
 		}
 	}
 

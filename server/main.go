@@ -92,6 +92,9 @@ func main() {
 	mux.HandleFunc("PUT /api/v1/sites/{id}", app.requireAdmin(app.hSiteUpdate))
 	mux.HandleFunc("DELETE /api/v1/sites/{id}", app.requireAdmin(app.hSiteDelete))
 	mux.HandleFunc("POST /api/v1/sites/{id}/token", app.requireAdmin(app.hSiteToken))
+	mux.HandleFunc("GET /api/v1/policy", app.requireAdmin(app.hPolicyGet))
+	mux.HandleFunc("PUT /api/v1/policy", app.requireAdmin(app.hPolicyPut))
+	mux.HandleFunc("PUT /api/v1/sites/{id}/policy", app.requireAdmin(app.hSitePolicyPut))
 
 	// The site interface. Authenticated with the site's own token, not the
 	// admin token: a site may act for itself and for nothing else.
@@ -162,6 +165,7 @@ func main() {
 	mux.HandleFunc("POST /sites", app.requireUI(app.hUISiteCreate))
 	mux.HandleFunc("POST /sites/{id}", app.requireUI(app.hUISiteUpdate))
 	mux.HandleFunc("POST /sites/{id}/delete", app.requireUI(app.hUISiteDelete))
+	mux.HandleFunc("POST /sites/{id}/policy", app.requireUI(app.hUISitePolicy))
 
 	mux.HandleFunc("POST /bladerunners", app.requireUI(app.hUIRackCreate))
 	mux.HandleFunc("POST /bladerunners/{id}", app.requireUI(app.hUIRackUpdate))
@@ -233,7 +237,7 @@ func main() {
 func (a *App) reaper() {
 	for {
 		time.Sleep(30 * time.Second)
-		cutoff := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
+		cutoff := time.Now().UTC().Add(-a.globalPolicy().offlineAfter()).Format(time.RFC3339)
 		res, err := a.db.Exec(`UPDATE blades SET state='offline'
 			WHERE state='online' AND last_seen<>'' AND last_seen < ?`, cutoff)
 		if err == nil {

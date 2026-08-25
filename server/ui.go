@@ -198,7 +198,7 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 			continue
 		}
 		rv.Used++
-		lvl, reasons := evalHealth(&b)
+		lvl, reasons := a.evalHealth(&b)
 		h := healthMap(&b)
 		statusKey, statusLED, statusArg := a.rowStatus(&b, lvl)
 		sv := slotView{
@@ -223,7 +223,7 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 			Buttons: hwText(h, "button_events", ""),
 		}
 		// The curve of the last two days, drawn from the stored samples.
-		if hist, err := a.bladeSamples(b.Serial, sampleKeep); err == nil && len(hist) > 1 {
+		if hist, err := a.bladeSamples(b.Serial, a.globalPolicy().sampleKeep()); err == nil && len(hist) > 1 {
 			var socs, rpms []float64
 			for _, sm := range hist {
 				if sm.Soc >= 0 {
@@ -2269,6 +2269,48 @@ var topoTmpl = template.Must(template.New("map").Funcs(tmplFuncs).Parse(headHTML
 <span>{{t .L "foot.api"}}</span></footer>
 </div></body></html>`))
 
+// hUISitePolicy saves the numbers a site judges by. An empty field means
+// "inherit", which is why they are parsed as optional rather than defaulted
+// to zero — a critical temperature of nought would be a strange thing to mean.
+func (a *App) hUISitePolicy(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	to := "/sites/" + strconv.FormatInt(id, 10)
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, to, "err", T(l, "err.form"))
+		return
+	}
+	numOrZero := func(name string) float64 {
+		v, err := strconv.ParseFloat(strings.TrimSpace(r.FormValue(name)), 64)
+		if err != nil {
+			return 0
+		}
+		return v
+	}
+	p := Policy{
+		SocWarn:    numOrZero("soc_warn"),
+		SocCrit:    numOrZero("soc_crit"),
+		NVMeWarn:   numOrZero("nvme_warn"),
+		DiskWarn:   numOrZero("disk_warn"),
+		DiskCrit:   numOrZero("disk_crit"),
+		OfflineMin: int(numOrZero("offline_min")),
+	}
+	if p.SocCrit != 0 && p.SocWarn != 0 && p.SocCrit <= p.SocWarn {
+		redirectMsg(w, r, to, "err", T(l, "err.policyorder"))
+		return
+	}
+	if p.DiskCrit != 0 && p.DiskWarn != 0 && p.DiskCrit <= p.DiskWarn {
+		redirectMsg(w, r, to, "err", T(l, "err.policyorder"))
+		return
+	}
+	if err := a.setSitePolicy(id, p); err != nil {
+		redirectMsg(w, r, to, "err", err.Error())
+		return
+	}
+	a.logEvent("", "info", "policy of site "+a.siteName(id)+" changed")
+	redirectMsg(w, r, to, "msg", T(l, "msg.policysaved"))
+}
+
 // ── Site detail ──────────────────────────────────────────────────────
 //
 // One site, in full: what stands in it, what it holds, and how it is doing.
@@ -2401,6 +2443,9 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 		"SLED":     led,
 		"Seen":     seenAt,
 		"HasToken": st.Token != "",
+		"Pol":      a.siteOwnPolicy(id),
+		"Eff":      a.sitePolicy(id),
+		"Glob":     a.globalPolicy(),
 		"Stock":    rows,
 		"Racks":    rvs,
 		"Used":     used,
@@ -2487,6 +2532,38 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
   {{else}}
   <div class="body empty">{{t .L "site.norack"}}</div>
   {{end}}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "pol.title"}}</h2>
+    <span class="tag">{{t .L "pol.hint"}}</span></div>
+  <div class="body">
+    <form method="post" action="/sites/{{.S.ID}}/policy">
+      <div class="row">
+        <div class="narrow"><label for="sw">{{t .L "pol.socwarn"}}</label>
+          <input id="sw" type="number" step="1" name="soc_warn" value="{{if .Pol.SocWarn}}{{.Pol.SocWarn}}{{end}}"
+                 placeholder="{{.Glob.SocWarn}}"></div>
+        <div class="narrow"><label for="sc">{{t .L "pol.soccrit"}}</label>
+          <input id="sc" type="number" step="1" name="soc_crit" value="{{if .Pol.SocCrit}}{{.Pol.SocCrit}}{{end}}"
+                 placeholder="{{.Glob.SocCrit}}"></div>
+        <div class="narrow"><label for="nw">{{t .L "pol.nvmewarn"}}</label>
+          <input id="nw" type="number" step="1" name="nvme_warn" value="{{if .Pol.NVMeWarn}}{{.Pol.NVMeWarn}}{{end}}"
+                 placeholder="{{.Glob.NVMeWarn}}"></div>
+        <div class="narrow"><label for="dw">{{t .L "pol.diskwarn"}}</label>
+          <input id="dw" type="number" step="1" name="disk_warn" value="{{if .Pol.DiskWarn}}{{.Pol.DiskWarn}}{{end}}"
+                 placeholder="{{.Glob.DiskWarn}}"></div>
+        <div class="narrow"><label for="dc">{{t .L "pol.diskcrit"}}</label>
+          <input id="dc" type="number" step="1" name="disk_crit" value="{{if .Pol.DiskCrit}}{{.Pol.DiskCrit}}{{end}}"
+                 placeholder="{{.Glob.DiskCrit}}"></div>
+        <div class="narrow"><label for="om">{{t .L "pol.offline"}}</label>
+          <input id="om" type="number" step="1" name="offline_min" value="{{if .Pol.OfflineMin}}{{.Pol.OfflineMin}}{{end}}"
+                 placeholder="{{.Glob.OfflineMin}}"></div>
+        <div class="narrow"><button type="submit">{{t .L "form.save"}}</button></div>
+      </div>
+    </form>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "pol.inherit"}}
+      {{t .L "pol.current" .Eff.SocWarn .Eff.SocCrit .Eff.DiskWarn .Eff.DiskCrit .Eff.OfflineMin}}</p>
+  </div>
 </div>
 
 <div class="card">

@@ -279,7 +279,26 @@ var catalog = map[string]map[Lang]string{
 	"stock.state.ready":    {LangEN: "ready", LangDE: "vorrätig"},
 	"stock.state.fetching": {LangEN: "fetching", LangDE: "wird geholt"},
 	"stock.state.error":    {LangEN: "failed", LangDE: "fehlgeschlagen"},
-	"site.edit":            {LangEN: "Edit site", LangDE: "Standort bearbeiten"},
+	"pol.title":            {LangEN: "Thresholds at this site", LangDE: "Schwellen an diesem Standort"},
+	"pol.hint":             {LangEN: "empty means: as the installation says", LangDE: "leer heißt: wie die Installation es sagt"},
+	"pol.socwarn":          {LangEN: "SoC warn °C", LangDE: "SoC Warnung °C"},
+	"pol.soccrit":          {LangEN: "SoC critical °C", LangDE: "SoC kritisch °C"},
+	"pol.nvmewarn":         {LangEN: "NVMe warn °C", LangDE: "NVMe Warnung °C"},
+	"pol.diskwarn":         {LangEN: "Disk warn %", LangDE: "Disk Warnung %"},
+	"pol.diskcrit":         {LangEN: "Disk critical %", LangDE: "Disk kritisch %"},
+	"pol.offline":          {LangEN: "Offline after min", LangDE: "Offline nach min"},
+	"pol.inherit": {
+		LangEN: "A blade in a ventilated rack and one in a warm office do not share the temperature at which someone should be woken.",
+		LangDE: "Ein Blade im belüfteten Rack und eines im warmen Büro teilen nicht die Temperatur, bei der jemand geweckt werden sollte."},
+	"pol.current": {
+		LangEN: "In force here: SoC %.0f/%.0f °C · disk %.0f/%.0f %% · offline after %d min.",
+		LangDE: "Hier gültig: SoC %.0f/%.0f °C · Disk %.0f/%.0f %% · offline nach %d min."},
+	"err.policyorder": {
+		LangEN: "the critical threshold has to be above the warning one",
+		LangDE: "Die kritische Schwelle muss über der Warnschwelle liegen"},
+	"msg.policysaved": {LangEN: "Thresholds saved.", LangDE: "Schwellen gespeichert."},
+
+	"site.edit": {LangEN: "Edit site", LangDE: "Standort bearbeiten"},
 	"site.notoken": {
 		LangEN: "This site has no token, so no site process can speak for it. Issue one with <code>POST /api/v1/sites/{id}/token</code>.",
 		LangDE: "Dieser Standort hat kein Token, also kann kein Standort-Dienst für ihn sprechen. Eines ausstellen mit <code>POST /api/v1/sites/{id}/token</code>."},
