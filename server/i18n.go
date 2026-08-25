@@ -406,6 +406,7 @@ var catalog = map[string]map[Lang]string{
 	"st.free":         {LangEN: "free", LangDE: "frei"},
 	"st.insync":       {LangEN: "in sync", LangDE: "in sync"},
 	"st.rebootreq":    {LangEN: "restart pending", LangDE: "Neustart nötig"},
+	"st.identify":     {LangEN: "identifying", LangDE: "Identify aktiv"},
 	"st.drift":        {LangEN: "drift", LangDE: "drift"},
 	"st.critical":     {LangEN: "critical", LangDE: "kritisch"},
 	"st.warn":         {LangEN: "attention", LangDE: "auffällig"},

@@ -255,6 +255,13 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 		if lvl == hUnknown {
 			sv.LED = ledFor(b.State)
 		}
+		// Identify wins over all of it. Someone asked this blade to make
+		// itself findable, and the screen should agree with the light they
+		// are walking towards — a healthy green says nothing about which of
+		// twenty blades is blinking.
+		if sv.Identifying {
+			sv.LED = "ident"
+		}
 		rv.Slots = append(rv.Slots, sv)
 	}
 	for _, sv := range rv.Slots {
@@ -1104,6 +1111,12 @@ func (a *App) hUINetbootImage(w http.ResponseWriter, r *http.Request) {
 // red needs attention.
 func cellFor(l Lang, sv slotView) slotCell {
 	c := slotCell{Slot: sv.Slot}
+	if sv.Identifying && !sv.Empty {
+		c.Class = "ident"
+		c.Title = fmt.Sprintf("%s %02d — %s · %s",
+			T(l, "th.slot"), sv.Slot, sv.Hostname, T(l, "st.identify"))
+		return c
+	}
 	if sv.Empty {
 		c.Class = "free"
 		c.Title = fmt.Sprintf("%s %02d — %s (%s)", T(l, "th.slot"), sv.Slot, T(l, "st.free"), sv.IP)
@@ -1144,6 +1157,13 @@ func (a *App) rowStatus(b *Blade, lvl healthLevel) (key, led, arg string) {
 		return "st.enrolled", "warn", ""
 	case lvl == hWarn:
 		return "st.warn", "warn", ""
+	}
+	// Identify is a state someone switched on and will want to switch off
+	// again; it belongs in the status column, not only in the lamp.
+	if h := healthMap(b); h != nil {
+		if st, _ := h["blade_state"].(string); st == "identify" {
+			return "st.identify", "ident", ""
+		}
 	}
 	// Something was configured that only the firmware reads — the blade holds
 	// the configuration but is not yet running it.
@@ -1354,10 +1374,11 @@ var tmplFuncs = template.FuncMap{
 const baseCSS = `
 :root{--ground:#ECEEF1;--surface:#FAFBFC;--surface-2:#E2E6EB;--ink:#15181E;--ink-2:#4B525D;
 --ink-3:#7A828F;--rule:#D3D8DF;--rule-s:#B9C1CB;--accent:#A9520F;--accent-ink:#8C4308;
---accent-soft:#F2E2D3;--ok:#2C6647;--warn:#8B6210;--crit:#A4322A}
+--accent-soft:#F2E2D3;--ok:#2C6647;--warn:#8B6210;--crit:#A4322A;--ident:#1D4ED8}
 @media(prefers-color-scheme:dark){:root{--ground:#13161B;--surface:#1A1E25;--surface-2:#232830;
 --ink:#E7EAEF;--ink-2:#A3ABB8;--ink-3:#727B89;--rule:#2C323C;--rule-s:#3E4653;--accent:#E4884A;
---accent-ink:#F0A56F;--accent-soft:#38271A;--ok:#61B587;--warn:#D5A343;--crit:#E06B5C}}
+--accent-ink:#F0A56F;--accent-soft:#38271A;--ok:#61B587;--warn:#D5A343;--crit:#E06B5C;
+--ident:#5B9BFF}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--ground);color:var(--ink);
 font:17px/1.62 system-ui,-apple-system,"Segoe UI",sans-serif;padding-bottom:4rem}
@@ -1433,13 +1454,19 @@ background:var(--ink-3);box-shadow:0 0 0 1px var(--rule-s) inset}
 .led.warn{background:var(--warn);box-shadow:0 0 6px -1px var(--warn)}
 .led.crit{background:var(--crit);box-shadow:0 0 8px -1px var(--crit)}
 .led.id{background:var(--accent);box-shadow:0 0 8px -1px var(--accent);animation:bl 1.1s steps(1,end) infinite}
+/* Identify: blue and breathing. Someone is standing in front of the rack
+   looking for this blade — the screen should agree with the light. */
+.led.ident{background:var(--ident);box-shadow:0 0 9px 0 var(--ident);
+  animation:pulse 1.4s ease-in-out infinite}
 .led.off{background:transparent}
 @keyframes bl{0%,49%{opacity:1}50%,100%{opacity:.15}}
-@media(prefers-reduced-motion:reduce){.led.id{animation:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){.led.id,.led.ident,.cell.ident{animation:none}}
 .chip{font:500 .78rem/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;
 padding:.3rem .55rem;border:1px solid currentColor;border-radius:2px;white-space:nowrap;
 display:inline-block}
 .chip.ok{color:var(--ok)}.chip.warn{color:var(--warn)}.chip.id{color:var(--accent-ink)}
+.chip.ident{color:#fff;background:var(--ident);border-color:var(--ident)}
 .chip.off{color:var(--ink-3)}.chip.crit{color:#fff;background:var(--crit);border-color:var(--crit)}
 .bar{height:.3rem;background:var(--surface-2);border-radius:2px;overflow:hidden;margin:.5rem 0 0}
 .bar i{display:block;height:100%;background:var(--accent)}
@@ -1457,6 +1484,8 @@ display:inline-block}
 .cells:hover .cell{transform:none}
 .cell:hover{transform:scale(1.08)}
 .cell.free{background:var(--surface-2);border-color:var(--rule);color:var(--ink-3)}
+.cell.ident{background:var(--ident);border-color:var(--ident);color:#fff;
+  animation:pulse 1.4s ease-in-out infinite}
 .cell.ok{background:var(--ok);border-color:var(--ok);color:var(--surface)}
 .cell.busy{background:var(--warn);border-color:var(--warn);color:var(--surface)}
 .cell.bad{background:var(--crit);border-color:var(--crit);color:#fff}
@@ -1491,6 +1520,7 @@ svg.topo .cell{fill:var(--ok)}
 svg.topo .cell.busy{fill:var(--warn)}
 svg.topo .cell.bad{fill:var(--crit)}
 svg.topo .cell.free{fill:var(--surface);stroke:var(--rule-s);stroke-width:.8}
+svg.topo .cell.ident{fill:var(--ident)}
 .therm{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;margin:.5rem 0 0;
   font:.85rem/1.6 ui-monospace,monospace;color:var(--ink-2)}
 .therm b{color:var(--ink);font-weight:600}
