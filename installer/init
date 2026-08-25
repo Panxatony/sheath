@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# Shorter startup sequence
+
+# Standard busybox init
+/bin/mount -t proc proc /proc
+/bin/mount -o remount,rw,noatime / 
+/bin/mount -t sysfs sysfs /sys
+/bin/mount -t devtmpfs dev /dev
+/bin/hostname -F /etc/hostname
+
+# udev
+/sbin/udevd -d
+udevadm trigger
+udevadm settle --timeout=2
+
+# Seed urandom with something
+cat /proc/cpuinfo /sys/class/drm/*/edid > /dev/urandom
+
+# dhcpcd
+mkdir -p /var/run
+dhcpcd -f /etc/dhcpcd.conf --noarp 2>/dev/null &
+
+if grep -q debugconsole /proc/cmdline; then
+	/sbin/getty -L console 0 vt100 &
+fi
+
+if grep -q blockingconsole /proc/cmdline; then
+    /sbin/getty -L console 0 vt100
+fi
+
+# Rookery: instead of the menu-driven imager, our own installer runs
+# here. Everything before this (udev, dhcpcd) is unchanged — the
+# Raspberry Pi initramfs has already solved "boot on a CM4 and get a
+# network".
+/usr/bin/rookery-installer
+
+# When the installer ends - normally or by crashing - PID 1 must not go
+# with it: that would be a kernel panic and an immediate reboot, and the
+# error would be gone from the screen before anyone could read it. So a
+# shell stays behind instead.
+echo
+echo "=== Installer finished. Shell on the console. ==="
+exec /bin/sh

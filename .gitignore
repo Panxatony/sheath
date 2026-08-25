@@ -1,0 +1,12 @@
+# Compiled binaries
+/server/rookery
+/agent/rookery-agent
+/installer/rookery-installer
+*.test
+
+# Local only: work in progress and previews
+/assets/preview.html
+
+# Notes about one concrete installation — addresses, serial numbers, the
+# hardware in one particular rack. Useful to their owner, nobody else.
+/local/
