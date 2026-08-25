@@ -650,6 +650,36 @@ func validSize(n int) bool {
 // updateRack changes name, location and size. Shrinking is allowed only
 // while no blade sits in a slot that would disappear — otherwise the blade
 // would hold a position outside its enclosure.
+// moveRack moves a BladeRunner to another site. The addresses of its blades
+// are derived from the site, so they all change — which is why the caller
+// rewrites the reservations, and why this is a deliberate action and not a
+// side effect of editing a name.
+//
+// The block offset is taken fresh at the destination: the old one may well be
+// occupied there, and keeping a number that means something different in
+// another network would be worse than renumbering.
+func (a *App) moveRack(id, siteID int64) error {
+	rk, err := a.getRack(id)
+	if err != nil {
+		return me("err.racknotfound", id)
+	}
+	if rk.SiteID == siteID {
+		return nil
+	}
+	if _, err := a.getSite(siteID); err != nil {
+		return me("err.sitegone")
+	}
+	off, err := a.nextRackOffset(siteID)
+	if err != nil {
+		return err
+	}
+	if _, err := a.db.Exec(`UPDATE racks SET site_id=?, ip_offset=? WHERE id=?`,
+		siteID, off, id); err != nil {
+		return me("err.updatefail", err.Error())
+	}
+	a.invalidateNetCache()
+	return nil
+}
 func (a *App) updateRack(id int64, name, location string, size int) error {
 	rk, err := a.getRack(id)
 	if err != nil {

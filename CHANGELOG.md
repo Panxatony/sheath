@@ -6,6 +6,23 @@ on `main`.
 ## Unreleased
 
 ### Added
+- A map at `/map`: the central server, the sites hanging off it, and every
+  slot as one square in the colour it has on its BladeRunner page. The line to
+  a site carries that link's state — solid while the site reports, dashed once
+  it goes quiet — because with several sites the interesting failure stops
+  being a blade and becomes a stretch of network. Drawn server-side as plain
+  SVG from the theme's own tokens; no library, and it follows dark mode like
+  everything else.
+- A BladeRunner can be assigned to a site when it is created, and moved to
+  another one afterwards. Moving renumbers every blade in it — the addresses
+  are derived from the site — and rewrites the reservations at once, which the
+  form says before you do it.
+
+### Fixed
+- The site choice only appeared once a second site existed, which left no way
+  to see where a new BladeRunner was going.
+
+### Added
 - The site relays what blades ask for, and answers it alone when the centre is
   unreachable. Configuration and provisioning come out of the state it holds;
   images are served from its own cache; reports a blade makes are buffered and

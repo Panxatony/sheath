@@ -235,11 +235,33 @@ var catalog = map[string]map[Lang]string{
 	"act.installtip": {
 		LangEN: "write the assigned image at the next netboot",
 		LangDE: "das zugewiesene Image beim nächsten Netzboot schreiben"},
+	"err.sitegone":     {LangEN: "that site does not exist", LangDE: "Diesen Standort gibt es nicht"},
 	"err.sitename":     {LangEN: "a site needs a name", LangDE: "Ein Standort braucht einen Namen"},
 	"err.sitenet":      {LangEN: "network must be three octets, e.g. 10.0.0", LangDE: "Netz muss drei Oktette sein, z. B. 10.0.0"},
 	"err.sitepool":     {LangEN: "pool range must lie inside 1–254 and ascend", LangDE: "Pool-Bereich muss in 1–254 liegen und aufsteigen"},
 	"err.sitehasracks": {LangEN: "site still holds %d BladeRunner(s)", LangDE: "Standort enthält noch %d BladeRunner"},
 	"err.sitelast":     {LangEN: "the last site cannot be removed", LangDE: "Der letzte Standort kann nicht entfernt werden"},
+
+	"nav.map":   {LangEN: "Map", LangDE: "Karte"},
+	"map.link":  {LangEN: "Map", LangDE: "Karte"},
+	"map.title": {LangEN: "Installation map", LangDE: "Karte der Installation"},
+	"map.lead": {
+		LangEN: "The central server, the sites hanging off it, and every slot as one square.",
+		LangDE: "Der zentrale Server, die Standorte daran, und jeder Slot als ein Quadrat."},
+	"map.centre": {LangEN: "central server", LangDE: "Zentrale"},
+	"map.counts": {LangEN: "%d BladeRunner(s) · %d blade(s)", LangDE: "%d BladeRunner · %d Blades"},
+	"map.legend": {
+		LangEN: "solid line: site reporting · dashed: stale or offline",
+		LangDE: "durchgezogen: Standort meldet sich · gestrichelt: veraltet oder offline"},
+	"map.alt": {
+		LangEN: "Diagram of the central server and its sites",
+		LangDE: "Schaubild des zentralen Servers und seiner Standorte"},
+
+	"rk.movehint": {
+		LangEN: "Moving this BladeRunner to another site renumbers every blade in it — the addresses are derived from the site, and the reservations are rewritten at once.",
+		LangDE: "Ein Umzug an einen anderen Standort nummeriert alle Blades darin neu — die Adressen leiten sich vom Standort ab, und die Reservierungen werden sofort neu geschrieben."},
+	"site.moved":  {LangEN: "%q moved to %q — new block %s–%s", LangDE: "%q nach %q verschoben — neuer Block %s–%s"},
+	"site.assign": {LangEN: "Site", LangDE: "Standort"},
 
 	"site.online":  {LangEN: "online", LangDE: "online"},
 	"site.stale":   {LangEN: "stale", LangDE: "veraltet"},

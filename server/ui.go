@@ -380,6 +380,26 @@ type siteGroup struct {
 	Free   int
 }
 
+// siteChoices is the list a form offers. Kept small on purpose: a select
+// needs a name and an id, not a whole site.
+type siteChoice struct {
+	ID   int64
+	Name string
+	Net  string
+}
+
+func (a *App) siteChoices() []siteChoice {
+	sites, err := a.listSites()
+	if err != nil {
+		return nil
+	}
+	out := make([]siteChoice, 0, len(sites))
+	for _, st := range sites {
+		out = append(out, siteChoice{ID: st.ID, Name: st.Name, Net: st.NetBase + ".0/24"})
+	}
+	return out
+}
+
 // siteHealth judges a site by when it last spoke. A site that has never been
 // given a token has no process of its own — that is a state, not a fault, and
 // saying "offline" about it would be wrong.
@@ -563,6 +583,7 @@ func (a *App) hRackPage(w http.ResponseWriter, r *http.Request) {
 		"Images":    images,
 		"Msg":       msg,
 		"Err":       errMsg,
+		"Sites":     a.siteChoices(),
 		"Log":       buildLog(events, l),
 		"CanDelete": rv.Used == 0,
 		"Open":      a.adminToken == "",
@@ -632,11 +653,34 @@ func (a *App) hUIRackUpdate(w http.ResponseWriter, r *http.Request) {
 		redirectMsg(w, r, to, "err", errText(l, err))
 		return
 	}
+	// Moving is part of the same form but a different kind of change: every
+	// address in this BladeRunner is derived from the site, so all of them
+	// move with it. Say so afterwards rather than let it happen quietly.
+	moved := ""
+	if sid, err := strconv.ParseInt(r.FormValue("site"), 10, 64); err == nil && sid > 0 {
+		rk, _ := a.getRack(id)
+		if rk != nil && rk.SiteID != sid {
+			if err := a.moveRack(id, sid); err != nil {
+				redirectMsg(w, r, to, "err", errText(l, err))
+				return
+			}
+			nk, _ := a.getRack(id)
+			if nk != nil {
+				net := a.siteNetBase(sid)
+				moved = T(l, "site.moved", nk.Name, a.siteName(sid),
+					net+"."+itoa(nk.IPOffset+1), net+"."+itoa(nk.IPOffset+nk.Size))
+			}
+		}
+	}
 	if _, err := a.syncDHCP(); err != nil {
 		redirectMsg(w, r, to, "err", T(l, "err.dhcpsync", errText(l, err)))
 		return
 	}
-	redirectMsg(w, r, to, "msg", T(l, "msg.saved"))
+	note := T(l, "msg.saved")
+	if moved != "" {
+		note = moved
+	}
+	redirectMsg(w, r, to, "msg", note)
 }
 
 func (a *App) hUIRackDelete(w http.ResponseWriter, r *http.Request) {
@@ -1364,6 +1408,30 @@ display:inline-block}
 .acts{display:flex;gap:.35rem;flex-wrap:wrap}
 
 /* ── Slot view ────────────────────────────────────────────────────── */
+/* The map. Colours come from the tokens, so the diagram follows the theme
+   like everything else; nothing here is a literal. */
+.topo-wrap{overflow-x:auto}
+svg.topo{display:block;width:100%;min-width:48rem;height:auto}
+svg.topo .node rect{fill:var(--surface-2);stroke:var(--rule-s);stroke-width:1}
+svg.topo .centre rect{fill:var(--accent-soft);stroke:var(--accent)}
+svg.topo text{font:400 .82rem/1 ui-monospace,monospace;fill:var(--ink-2)}
+svg.topo text.t1{font-weight:600;font-size:1rem;fill:var(--ink)}
+svg.topo text.t3{font-size:.76rem;fill:var(--ink-3)}
+svg.topo text.right{text-anchor:end}
+svg.topo .link{fill:none;stroke:var(--rule-s);stroke-width:1.5}
+svg.topo .link.warn{stroke:var(--warn);stroke-dasharray:6 4}
+svg.topo .link.crit{stroke:var(--crit);stroke-dasharray:2 5}
+svg.topo .link.off{stroke:var(--rule);stroke-dasharray:2 5}
+svg.topo .dot{fill:var(--ok)}
+svg.topo .dot.warn{fill:var(--warn)}
+svg.topo .dot.crit{fill:var(--crit)}
+svg.topo .dot.off{fill:var(--ink-3)}
+/* The same four states the BladeRunner cards use, so a square means the same
+   thing wherever it is seen. */
+svg.topo .cell{fill:var(--ok)}
+svg.topo .cell.busy{fill:var(--warn)}
+svg.topo .cell.bad{fill:var(--crit)}
+svg.topo .cell.free{fill:var(--surface);stroke:var(--rule-s);stroke-width:.8}
 .therm{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;margin:.5rem 0 0;
   font:.85rem/1.6 ui-monospace,monospace;color:var(--ink-2)}
 .therm b{color:var(--ink);font-weight:600}
@@ -1504,7 +1572,9 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
   <p class="sub">{{t .L "sub.network" .NetBase .PoolFrom .PoolTo}}</p>
 </div>` + topRight + `</div>
 <div class="meta"><span>{{t .L "meta.racks"}} <b>{{len .Racks}}</b></span>
-<span>{{t .L "meta.blades"}} <b>{{.Blades}}</b></span></div>
+<span>{{t .L "meta.blades"}} <b>{{.Blades}}</b></span>
+<span>{{t .L "site.title"}} <b>{{len .Sites}}</b></span>
+<span><a href="/map">{{t .L "map.link"}} →</a></span></div>
 </header>
 
 {{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
@@ -1560,12 +1630,10 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
           </select></div>
         <div><label for="l">{{t .L "form.location"}}</label>
           <input id="l" type="text" name="location" maxlength="60" placeholder="{{t .L "form.optional"}}"></div>
-        {{if gt (len .Sites) 1}}
-        <div class="narrow"><label for="site">{{t .L "site.one"}}</label>
+        <div><label for="site">{{t .L "site.one"}}</label>
           <select id="site" name="site">
-            {{range .Sites}}<option value="{{.Site.ID}}"{{if .Local}} selected{{end}}>{{.Site.Name}}</option>{{end}}
+            {{range .Sites}}<option value="{{.Site.ID}}"{{if .Local}} selected{{end}}>{{.Site.Name}} · {{.Net}}</option>{{end}}
           </select></div>
-        {{end}}
         <div class="narrow"><button type="submit">{{t .L "form.create"}}</button></div>
       </div>
     </form>
@@ -1850,10 +1918,16 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
           </select></div>
         <div><label for="l">{{t .L "form.location"}}</label>
           <input id="l" type="text" name="location" value="{{.R.Rack.Location}}" maxlength="60"></div>
+        <div><label for="site">{{t .L "site.assign"}}</label>
+          {{$sid := .R.Rack.SiteID}}
+          <select id="site" name="site">
+            {{range .Sites}}<option value="{{.ID}}"{{if eq .ID $sid}} selected{{end}}>{{.Name}} · {{.Net}}</option>{{end}}
+          </select></div>
         <div class="narrow"><button type="submit">{{t .L "form.save"}}</button></div>
       </div>
     </form>
     <p class="hint" style="margin:.9rem 0 0">{{t .L "rk.edithint"}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "rk.movehint"}}</p>
   </div>
 </div>
 
@@ -1919,3 +1993,220 @@ var loginTmpl = template.Must(template.New("login").Funcs(tmplFuncs).Parse(headH
     font:.78rem/1.5 ui-monospace,monospace;overflow-x:auto;color:var(--ink-2)"><code>sudo cat /srv/rookery/data/admin-token</code></pre>
 </div></div>
 </div></div></body></html>`))
+
+// ── The map ──────────────────────────────────────────────────────────
+//
+// One page that answers "what does this installation consist of" without
+// scrolling: the central server, the sites hanging off it, and in each site
+// the blades as one square apiece. The line between centre and site carries
+// the state of that link, because with several sites the interesting failure
+// is no longer a blade but a stretch of network.
+
+type topoSite struct {
+	Site   Site
+	State  string
+	SLED   string
+	Seen   string
+	Net    string
+	Racks  int
+	Blades int
+	Cells  []slotCell
+	Local  bool
+}
+
+const (
+	topoWidth  = 860.0
+	topoRow    = 118.0
+	topoBoxW   = 470.0
+	topoBoxH   = 92.0
+	topoSiteX  = 340.0
+	topoBusX   = 300.0
+	topoTopPad = 28.0
+)
+
+func (a *App) hTopology(w http.ResponseWriter, r *http.Request) {
+	l := a.resolveLang(w, r)
+	sites, err := a.listSites()
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	racks, _ := a.listRacks()
+	blades, _ := a.listBlades()
+
+	local := int64(0)
+	if st, lerr := a.localSite(); lerr == nil {
+		local = st.ID
+	}
+
+	byID := map[int64]*topoSite{}
+	views := make([]topoSite, 0, len(sites))
+	for _, st := range sites {
+		key, led, seen := siteHealth(l, st)
+		views = append(views, topoSite{
+			Site: st, State: T(l, key), SLED: led, Seen: seen,
+			Net: st.NetBase + ".0/24", Local: st.ID == local,
+		})
+	}
+	for i := range views {
+		byID[views[i].Site.ID] = &views[i]
+	}
+	for _, rk := range racks {
+		g, ok := byID[rk.SiteID]
+		if !ok {
+			continue
+		}
+		g.Racks++
+		rv := a.buildRackView(rk, blades, l)
+		for _, c := range rv.Cells {
+			if c.Class != "off" {
+				g.Blades++
+			}
+			g.Cells = append(g.Cells, c)
+		}
+	}
+
+	msg, errMsg := flash(r)
+	render(w, topoTmpl, map[string]any{
+		"L":      l,
+		"Path":   "/map",
+		"Sites":  views,
+		"SVG":    topoSVG(l, views, a.baseURL),
+		"Blades": len(blades),
+		"Msg":    msg,
+		"Err":    errMsg,
+		"Open":   a.adminToken == "",
+	})
+}
+
+// topoSVG draws the picture. Server-side and without a library: the shape is
+// a handful of boxes and lines, and a diagram that needs a megabyte of
+// JavaScript to show four rectangles is a diagram nobody should ship.
+func topoSVG(l Lang, sites []topoSite, baseURL string) template.HTML {
+	n := len(sites)
+	height := topoTopPad*2 + float64(n)*topoRow
+	if height < 200 {
+		height = 200
+	}
+	centreY := height / 2
+	var b strings.Builder
+
+	fmt.Fprintf(&b, `<svg class="topo" viewBox="0 0 %.0f %.0f" role="img" `+
+		`aria-label="%s">`, topoWidth, height, T(l, "map.alt"))
+
+	// The centre.
+	fmt.Fprintf(&b, `<g class="node centre"><rect x="20" y="%.1f" width="250" height="96" rx="4"/>`,
+		centreY-48)
+	fmt.Fprintf(&b, `<text class="t1" x="40" y="%.1f">Rookery</text>`, centreY-20)
+	fmt.Fprintf(&b, `<text class="t2" x="40" y="%.1f">%s</text>`, centreY+2, esc(T(l, "map.centre")))
+	fmt.Fprintf(&b, `<text class="t3" x="40" y="%.1f">%s</text></g>`, centreY+26, esc(shortURL(baseURL)))
+
+	for i, s := range sites {
+		y := topoTopPad + float64(i)*topoRow
+		mid := y + topoBoxH/2
+
+		// The link. Its state is the state of the site: a dashed line is a
+		// site that has not spoken recently, and that is worth seeing before
+		// reading any number.
+		fmt.Fprintf(&b, `<path class="link %s" d="M270 %.1f H%.0f V%.1f H%.0f"/>`,
+			s.SLED, centreY, topoBusX, mid, topoSiteX)
+		fmt.Fprintf(&b, `<circle class="dot %s" cx="%.0f" cy="%.1f" r="4"/>`,
+			s.SLED, topoSiteX, mid)
+
+		fmt.Fprintf(&b, `<g class="node site"><rect x="%.0f" y="%.1f" width="%.0f" height="%.0f" rx="4"/>`,
+			topoSiteX, y, topoBoxW, topoBoxH)
+		label := s.Site.Name
+		if s.Local {
+			label += " · " + T(l, "site.here")
+		}
+		fmt.Fprintf(&b, `<text class="t1" x="%.0f" y="%.1f">%s</text>`,
+			topoSiteX+18, y+26, esc(label))
+		fmt.Fprintf(&b, `<text class="t3" x="%.0f" y="%.1f">%s · %s</text>`,
+			topoSiteX+18, y+46, esc(s.Net),
+			esc(T(l, "map.counts", s.Racks, s.Blades)))
+
+		// State, right-aligned so the eye can run down one column of them.
+		fmt.Fprintf(&b, `<circle class="dot %s" cx="%.0f" cy="%.1f" r="5"/>`,
+			s.SLED, topoSiteX+topoBoxW-104, y+21)
+		state := s.State
+		if s.Seen != "" {
+			state += " · " + s.Seen
+		}
+		fmt.Fprintf(&b, `<text class="t3 right" x="%.0f" y="%.1f">%s</text>`,
+			topoSiteX+topoBoxW-18, y+26, esc(state))
+
+		// One square per slot, in the colour it has on its BladeRunner page.
+		x := topoSiteX + 18
+		cy := y + 62
+		for j, c := range s.Cells {
+			if j >= 44 {
+				fmt.Fprintf(&b, `<text class="t3" x="%.1f" y="%.1f">…</text>`, x+4, cy+9)
+				break
+			}
+			fmt.Fprintf(&b, `<rect class="cell %s" x="%.1f" y="%.1f" width="9" height="12" rx="1.5">`+
+				`<title>%s</title></rect>`, c.Class, x, cy, esc(c.Title))
+			x += 11
+		}
+		if len(s.Cells) == 0 {
+			fmt.Fprintf(&b, `<text class="t3" x="%.0f" y="%.1f">%s</text>`,
+				topoSiteX+18, cy+10, esc(T(l, "site.norack")))
+		}
+		b.WriteString(`</g>`)
+	}
+	b.WriteString(`</svg>`)
+	return template.HTML(b.String())
+}
+
+func esc(s string) string { return template.HTMLEscapeString(s) }
+
+func shortURL(u string) string {
+	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+	return strings.TrimSuffix(u, "/")
+}
+
+var topoTmpl = template.Must(template.New("map").Funcs(tmplFuncs).Parse(headHTML + `
+<div class="wrap">
+<header class="top"><div class="topbar"><div>
+  <p class="crumb"><a href="/">{{mark}} {{t .L "nav.overview"}}</a> / {{t .L "nav.map"}}</p>
+  <h1>{{t .L "map.title"}}</h1>
+  <p class="sub">{{t .L "map.lead"}}</p>
+</div>` + topRight + `</div>
+<div class="meta"><span>{{t .L "site.title"}} <b>{{len .Sites}}</b></span>
+<span>{{t .L "meta.blades"}} <b>{{.Blades}}</b></span></div>
+</header>
+
+{{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
+{{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "map.title"}}</h2>
+    <span class="tag">{{t .L "map.legend"}}</span></div>
+  <div class="body topo-wrap">{{.SVG}}</div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "site.title"}}</h2></div>
+  <div class="body" style="padding:0">
+    <table>
+      <thead><tr><th>{{t .L "site.name"}}</th><th>{{t .L "site.net"}}</th>
+        <th>{{t .L "meta.racks"}}</th><th>{{t .L "meta.blades"}}</th>
+        <th>{{t .L "th.status"}}</th></tr></thead>
+      <tbody>{{range .Sites}}
+        <tr>
+          <td>{{.Site.Name}}{{if .Local}} <span class="chip ok">{{t $.L "site.here"}}</span>{{end}}
+            {{if .Site.Location}}<div class="mono sub2">{{.Site.Location}}</div>{{end}}</td>
+          <td class="mono">{{.Net}}</td>
+          <td class="mono num">{{.Racks}}</td>
+          <td class="mono num">{{.Blades}}</td>
+          <td><span class="chip {{.SLED}}">{{.State}}</span>
+            {{if .Seen}}<div class="mono sub2">{{.Seen}}</div>{{end}}</td>
+        </tr>
+      {{end}}</tbody>
+    </table>
+  </div>
+</div>
+
+<footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
+<span>{{t .L "foot.api"}}</span></footer>
+</div></body></html>`))
