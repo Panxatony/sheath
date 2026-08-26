@@ -1,0 +1,3 @@
+---
+# Deliberately empty: each role names its own handler, and a handler that
+# restarts the wrong service is worse than none.

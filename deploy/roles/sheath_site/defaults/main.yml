@@ -1,0 +1,30 @@
+---
+# The URL blades at this site should use. It is written into the netboot
+# payload, so a blade here fetches from the machine in its own room rather
+# than across the link that may be the very thing that is down.
+sheath_site_relay_url: "http://{{ ansible_default_ipv4.address }}:8081"
+sheath_site_listen: ":8081"
+sheath_site_interval: 30s
+
+sheath_site_token_file: /etc/sheath-site/token
+sheath_site_state_dir: /var/lib/sheath-site
+sheath_site_hosts_dir: /etc/sheath/dhcp-hosts
+sheath_site_dnsmasq_log: /srv/sheath/logs/dnsmasq.log
+
+# A one-time code from the interface. Used only when there is no token yet, so
+# it can be left in place after the first run; better still, pass it once:
+#   ansible-playbook site.yml -l site-b -e sheath_site_enroll_code=ABCD-EFGH-JKLM
+sheath_site_enroll_code: ""
+
+# DHCP is off unless you say otherwise. A second DHCP server in a segment that
+# already has one is not a configuration detail, it is an outage, and this
+# playbook cannot see from here which it would be.
+sheath_site_dhcp: false
+sheath_site_interface: "{{ ansible_default_ipv4.interface }}"
+sheath_site_net_base: "{{ ansible_default_ipv4.address.split('.')[:3] | join('.') }}"
+sheath_site_gateway: "{{ sheath_site_net_base }}.1"
+sheath_site_dns_upstream: "{{ sheath_site_gateway }}"
+sheath_site_domain: blades.lan
+sheath_site_pool_from: 210
+sheath_site_pool_to: 240
+sheath_site_lease: 1h

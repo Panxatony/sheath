@@ -1,0 +1,48 @@
+---
+# Placing one binary, from a release or from a local build.
+#
+# Two ways in, because there are two situations. Running a released version is
+# the normal case and takes nothing but a tag. Installing what you just built
+# is the case while working on Sheath itself, and copying a file beats cutting
+# a release to test a one-line change.
+#
+# Either way the binary is replaced only when it differs, and the handler that
+# restarts the service fires only then.
+
+- name: "{{ sheath_binary_name }} — from a local build"
+  ansible.builtin.copy:
+    src: "{{ sheath_local_bin_dir }}/{{ sheath_binary_name }}-linux-{{ sheath_arch }}"
+    dest: "{{ sheath_binary_dest }}"
+    owner: "{{ sheath_binary_owner }}"
+    group: "{{ sheath_binary_owner }}"
+    mode: "{{ sheath_binary_mode }}"
+  when: sheath_local_bin_dir | length > 0
+  notify: "{{ sheath_binary_notify }}"
+
+- name: "{{ sheath_binary_name }} — from the release"
+  when: sheath_local_bin_dir | length == 0
+  block:
+    - name: Fetch it
+      ansible.builtin.get_url:
+        url: "{{ sheath_release_url }}/{{ sheath_binary_name }}-linux-{{ sheath_arch }}"
+        dest: "/tmp/{{ sheath_binary_name }}-{{ sheath_arch }}"
+        mode: "0600"
+        force: true
+      register: fetched
+      changed_when: false
+
+    - name: Place it
+      ansible.builtin.copy:
+        src: "/tmp/{{ sheath_binary_name }}-{{ sheath_arch }}"
+        dest: "{{ sheath_binary_dest }}"
+        remote_src: true
+        owner: "{{ sheath_binary_owner }}"
+        group: "{{ sheath_binary_owner }}"
+        mode: "{{ sheath_binary_mode }}"
+      notify: "{{ sheath_binary_notify }}"
+
+    - name: Clean up
+      ansible.builtin.file:
+        path: "/tmp/{{ sheath_binary_name }}-{{ sheath_arch }}"
+        state: absent
+      changed_when: false

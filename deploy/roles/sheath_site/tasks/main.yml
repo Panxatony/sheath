@@ -1,0 +1,139 @@
+---
+# One site: the DHCP reservations, the netboot payload, the image cache and
+# the relay the blades actually talk to.
+
+- name: Where the token and the state live
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    # The token is a credential and the state holds every blade's own token,
+    # so neither directory is anybody else's business.
+    - { path: "{{ sheath_site_token_file | dirname }}", mode: "0700" }
+    - { path: "{{ sheath_site_state_dir }}", mode: "0750" }
+    - { path: "{{ sheath_site_hosts_dir }}", mode: "0755" }
+
+- name: The site binary
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: binary
+  vars:
+    sheath_binary_name: sheath-site
+    sheath_binary_dest: /usr/local/bin/sheath-site
+    sheath_binary_owner: root
+    sheath_binary_notify: restart sheath-site
+
+- name: Is this site enrolled yet?
+  ansible.builtin.stat:
+    path: "{{ sheath_site_token_file }}"
+  register: token_file
+
+- name: A site with neither a token nor a code cannot be brought up
+  ansible.builtin.fail:
+    msg: >-
+      No {{ sheath_site_token_file }} and no sheath_site_enroll_code. Create a
+      code on the site's page in the interface and pass it:
+      -e sheath_site_enroll_code=ABCD-EFGH-JKLM
+  when: not token_file.stat.exists and sheath_site_enroll_code | length == 0
+
+- name: Sign this site in
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/sheath-site
+      - --server={{ sheath_server_url }}
+      - --relay-url={{ sheath_site_relay_url }}
+      - --token-file={{ sheath_site_token_file }}
+      - --state={{ sheath_site_state_dir }}
+      - --tftp={{ sheath_tftp_dir }}
+      - --images={{ sheath_images_dir }}
+      - --dhcp-hosts={{ sheath_site_hosts_dir }}
+      - --dnsmasq-log={{ sheath_site_dnsmasq_log }}
+      - --listen=
+      - --enroll={{ sheath_site_enroll_code }}
+      - --once
+    creates: "{{ sheath_site_token_file }}"
+  when: not token_file.stat.exists
+  register: enrolled
+
+- name: What it was told
+  ansible.builtin.debug:
+    msg: "{{ enrolled.stdout_lines | default([]) }}"
+  when: enrolled is changed
+
+- name: dnsmasq
+  # `| bool` because an ini inventory hands over the string "true", and a
+  # string is not a condition — Ansible refuses it, and rightly.
+  when: sheath_site_dhcp | bool
+  block:
+    - name: Installed
+      ansible.builtin.package:
+        name: dnsmasq
+        state: present
+
+    - name: Somewhere to log where sheath-site can read it
+      ansible.builtin.file:
+        path: "{{ sheath_site_dnsmasq_log | dirname }}"
+        state: directory
+        owner: "{{ sheath_user }}"
+        group: "{{ sheath_user }}"
+        mode: "0755"
+
+    - name: Configured
+      ansible.builtin.template:
+        src: dnsmasq-sheath.conf.j2
+        dest: /etc/dnsmasq.d/sheath.conf
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "dnsmasq --test --conf-file=%s"
+      notify: restart dnsmasq
+
+    - name: Running, and starting at boot
+      ansible.builtin.systemd_service:
+        name: dnsmasq
+        state: started
+        enabled: true
+      # In a dry run the package was not installed, so there is no unit to
+      # ask about and the question is not worth an error.
+      when: not ansible_check_mode
+
+- name: The unit
+  ansible.builtin.template:
+    src: sheath-site.service.j2
+    dest: /etc/systemd/system/sheath-site.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart sheath-site
+
+- name: Running, and starting at boot
+  ansible.builtin.systemd_service:
+    name: sheath-site
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Everything that is pending, now, so the check below sees the truth
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the relay to answer
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ sheath_site_listen | regex_replace('^.*:', '') }}/healthz"
+    status_code: 200
+  register: relay
+  retries: 10
+  delay: 2
+  until: relay is succeeded
+  # Nothing was applied in a dry run, so waiting for it would prove nothing.
+  when: not ansible_check_mode
+  when: not ansible_check_mode and sheath_site_listen | length > 0
+
+- name: What this site says about itself
+  ansible.builtin.debug:
+    msg: >-
+      site {{ relay.json.site }}, centre {{ 'reachable' if relay.json.online else 'away' }},
+      {{ relay.json.queued }} report(s) waiting
+  when: not ansible_check_mode and sheath_site_listen | length > 0

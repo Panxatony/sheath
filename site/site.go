@@ -64,8 +64,14 @@ type desired struct {
 	Boot   struct {
 		BootImg    string `json:"boot_img"`
 		SHA256     string `json:"sha256"`
+		Version    string `json:"version"`
 		CmdlineURL string `json:"cmdline_url"`
 		ServerURL  string `json:"server_url"`
+		Files      []struct {
+			Name   string `json:"name"`
+			SHA256 string `json:"sha256"`
+			Bytes  int64  `json:"bytes"`
+		} `json:"files"`
 	} `json:"boot"`
 	Version  string `json:"version"`
 	Produced string `json:"produced"`

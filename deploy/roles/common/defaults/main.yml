@@ -1,0 +1,6 @@
+---
+# Which binary this role should place, and where. Set by the calling role.
+sheath_binary_name: ""
+sheath_binary_dest: ""
+sheath_binary_owner: root
+sheath_binary_mode: "0755"

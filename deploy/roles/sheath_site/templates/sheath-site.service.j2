@@ -1,0 +1,30 @@
+[Unit]
+Description=Sheath site — the network presence of one site
+Documentation=https://github.com/Panxatony/sheath
+After=network-online.target dnsmasq.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Root, because it writes into the dnsmasq host directory and the TFTP root,
+# and reloads dnsmasq. The blast radius is one site's network configuration,
+# which is exactly what this program is for.
+User=root
+# Neither the site id nor the token appear here: both were written beside each
+# other when the site enrolled, and are read from there.
+ExecStart=/usr/local/bin/sheath-site \
+    --server={{ sheath_server_url }} \
+    --relay-url={{ sheath_site_relay_url }} \
+    --listen={{ sheath_site_listen }} \
+    --token-file={{ sheath_site_token_file }} \
+    --dhcp-hosts={{ sheath_site_hosts_dir }} \
+    --dnsmasq-log={{ sheath_site_dnsmasq_log }} \
+    --images={{ sheath_images_dir }} \
+    --tftp={{ sheath_tftp_dir }} \
+    --state={{ sheath_site_state_dir }} \
+    --interval={{ sheath_site_interval }}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

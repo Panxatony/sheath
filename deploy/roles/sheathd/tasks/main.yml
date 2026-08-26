@@ -1,0 +1,121 @@
+---
+# The central server: the inventory, the decisions, the interface. It holds no
+# wire of its own.
+
+- name: The image tools need the same architecture as the images
+  ansible.builtin.assert:
+    that: sheath_arch == 'arm64'
+    fail_msg: >-
+      Preparing an image means a chroot into it, and a chroot has no emulation:
+      the centre must be arm64, or sheathd_image_tools has to be false.
+    quiet: true
+  when: sheathd_image_tools | bool
+
+- name: Data and agent directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ sheath_user }}"
+    group: "{{ sheath_user }}"
+    mode: "0755"
+  loop:
+    - "{{ sheath_data_dir }}"
+    - "{{ sheath_agent_dir }}"
+
+- name: Where the database copies go
+  ansible.builtin.file:
+    path: "{{ sheath_backup_dir }}"
+    state: directory
+    owner: "{{ sheath_user }}"
+    group: "{{ sheath_user }}"
+    # They contain every token in the system: the admin token, each site's,
+    # each blade's. Nobody but the service account gets to look.
+    mode: "0700"
+
+- name: The server binary
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: binary
+  vars:
+    sheath_binary_name: sheathd
+    sheath_binary_dest: "{{ sheath_root }}/sheathd"
+    sheath_binary_owner: "{{ sheath_user }}"
+    sheath_binary_notify: restart sheathd
+
+- name: The image tools
+  when: sheathd_image_tools | bool
+  block:
+    - name: Where they live
+      ansible.builtin.file:
+        path: "{{ sheath_tools_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Root-owned and not writable by the service account: the sudoers rule
+    # below permits running them, and a script the caller can rewrite is a
+    # sudoers rule that permits anything.
+    - name: Place them
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ sheath_tools_dir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - mirror-image.sh
+        - prepare-image.sh
+
+    - name: Permit exactly those two, and nothing else
+      ansible.builtin.copy:
+        content: |
+          # Written by Ansible. Adding an image from the interface unpacks an
+          # archive, mounts a disk image over a loop device and runs a chroot.
+          # sheathd itself runs unprivileged and stays that way.
+          {{ sheath_user }} ALL=(root) NOPASSWD: {{ sheath_tools_dir }}/mirror-image.sh, {{ sheath_tools_dir }}/prepare-image.sh
+        dest: /etc/sudoers.d/sheath-images
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"
+
+- name: Without the tools, take the rule away again
+  ansible.builtin.file:
+    path: /etc/sudoers.d/sheath-images
+    state: absent
+  when: not sheathd_image_tools | bool
+
+- name: The unit
+  ansible.builtin.template:
+    src: sheathd.service.j2
+    dest: /etc/systemd/system/sheathd.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart sheathd
+
+- name: Running, and starting at boot
+  ansible.builtin.systemd_service:
+    name: sheathd
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for it to answer
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ sheathd_listen | regex_replace('^.*:', '') }}/api/v1/health"
+    status_code: 200
+  register: health
+  retries: 10
+  delay: 2
+  until: health is succeeded
+  # Nothing was applied in a dry run, so waiting for it would prove nothing.
+  when: not ansible_check_mode
+
+- name: What it says about itself
+  when: not ansible_check_mode
+  ansible.builtin.debug:
+    msg: >-
+      {{ health.json.blades }} blade(s), {{ health.json.racks }} BladeRunner(s),
+      {{ health.json.sites | length }} site(s)

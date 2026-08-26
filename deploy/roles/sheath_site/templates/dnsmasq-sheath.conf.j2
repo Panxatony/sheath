@@ -1,0 +1,56 @@
+# Sheath — DHCP, TFTP and DNS for one blade segment. Written by Ansible.
+#
+# The reservations are not in here: sheath-site writes one file per blade into
+# {{ sheath_site_hosts_dir }} from the desired state it fetched, and dnsmasq
+# picks new and changed ones up by itself.
+
+interface={{ sheath_site_interface }}
+bind-interfaces
+except-interface=lo
+
+# ── DNS ──
+domain={{ sheath_site_domain }}
+local=/{{ sheath_site_domain }}/
+expand-hosts
+server={{ sheath_site_dns_upstream }}
+cache-size=1000
+
+# ── DHCP ──
+# Address plan: .1 gateway, .10 this machine, .{{ sheath_site_pool_from }}–.{{ sheath_site_pool_to }} a
+# pool for blades that are not in the inventory yet — they boot, enroll, and
+# get a reservation afterwards. A BladeRunner's blades sit in a fixed block
+# derived from (site, BladeRunner, slot).
+dhcp-range={{ sheath_site_net_base }}.{{ sheath_site_pool_from }},{{ sheath_site_net_base }}.{{ sheath_site_pool_to }},255.255.255.0,{{ sheath_site_lease }}
+dhcp-option=option:router,{{ sheath_site_gateway }}
+dhcp-option=option:dns-server,{{ ansible_default_ipv4.address }}
+dhcp-option=option:domain-name,{{ sheath_site_domain }}
+# This is the only DHCP server in this segment. Without it dnsmasq stays
+# polite and waits for a server that does not exist.
+dhcp-authoritative
+
+# Deleted reservation files are noticed on SIGHUP, which is what the handler
+# in this role sends; new and changed ones need nothing.
+dhcp-hostsdir={{ sheath_site_hosts_dir }}
+
+# ── Netboot (Raspberry Pi CM4) ──
+enable-tftp
+tftp-root={{ sheath_tftp_dir }}
+tftp-no-fail
+# The bootloader netboots only when it is handed option 43 with the string
+# "Raspberry Pi Boot". Without it the attempt fails at once and the bootloader
+# falls through to the next device in its BOOT_ORDER. That is the switch:
+#
+#   !known   the blade is in no reservation, so it is new: always let it in,
+#            otherwise it can never enroll.
+#   bootnet  an installation was asked for, and the site set the tag in that
+#            blade's reservation file.
+#
+# A known blade with nothing pending gets neither, and boots from its NVMe.
+pxe-service=tag:!known,0,"Raspberry Pi Boot"
+pxe-service=tag:bootnet,0,"Raspberry Pi Boot"
+
+# sheath-site reads this file to see blades booting before any operating
+# system runs on them. log-dhcp is required: without it the vendor class is
+# not logged, and that is what tells a netboot from a plain address lease.
+log-dhcp
+log-facility={{ sheath_site_dnsmasq_log }}

@@ -11,3 +11,8 @@
 # Notes about one concrete installation — addresses, serial numbers, the
 # hardware in one particular rack. Useful to their owner, nobody else.
 /local/
+
+# The real inventory names real machines and real networks; the repository is
+# public. deploy/inventory.example.ini is the one that ships.
+/deploy/inventory.ini
+/deploy/host_vars/

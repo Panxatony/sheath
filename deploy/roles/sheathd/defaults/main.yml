@@ -1,0 +1,19 @@
+---
+# The address a site uses to reach the centre. Not the address blades use —
+# blades talk to their own site.
+sheathd_base_url: "http://{{ ansible_default_ipv4.address }}:8080"
+sheathd_listen: ":8080"
+
+# The centre writes no DHCP reservations of its own: that is a site's job,
+# even where the site happens to run on the same machine.
+sheathd_local_dhcp: false
+
+# Set on the very first run only, to lay out the address plan of site 1.
+sheathd_net_base: ""
+
+# Adding an image from the interface runs two shell tools through sudo. Turn
+# this off where images are only ever added by hand.
+sheathd_image_tools: true
+
+sheathd_backup_at: "03:30"
+sheathd_backup_keep: 14

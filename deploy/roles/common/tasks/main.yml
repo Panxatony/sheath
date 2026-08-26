@@ -1,0 +1,25 @@
+---
+# What both roles need before anything else: the service account and the
+# directories it owns. Nothing here is specific to being a centre or a site,
+# and a machine that is both — which is how most people start — gets one copy.
+
+- name: Service account
+  ansible.builtin.user:
+    name: "{{ sheath_user }}"
+    system: true
+    home: "{{ sheath_root }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(sheath_user) }}"
+    group: "{{ item.owner | default(sheath_user) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ sheath_root }}" }
+    - { path: "{{ sheath_images_dir }}" }
+    - { path: "{{ sheath_tftp_dir }}" }
+    - { path: "{{ sheath_logs_dir }}" }

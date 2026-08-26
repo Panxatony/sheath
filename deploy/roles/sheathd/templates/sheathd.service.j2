@@ -1,0 +1,43 @@
+[Unit]
+Description=Sheath — central server
+Documentation=https://github.com/Panxatony/sheath
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ sheath_user }}
+Group={{ sheath_user }}
+WorkingDirectory={{ sheath_root }}
+ExecStart={{ sheath_root }}/sheathd \
+    --addr={{ sheathd_listen }} \
+    --db={{ sheath_data_dir }}/sheath.db \
+    --images={{ sheath_images_dir }} \
+    --agent={{ sheath_agent_dir }} \
+    --tftp={{ sheath_tftp_dir }} \
+    --base-url={{ sheathd_base_url }} \
+    --local-dhcp={{ sheathd_local_dhcp | lower }} \
+{% if sheathd_net_base | length > 0 %}
+    --net-base={{ sheathd_net_base }} \
+{% endif %}
+{% if sheathd_image_tools | bool %}
+    --tools={{ sheath_tools_dir }} \
+    --root={{ sheath_root }} \
+{% endif %}
+    --backup={{ sheath_backup_dir }} \
+    --backup-at={{ sheathd_backup_at }} \
+    --backup-keep={{ sheathd_backup_keep }}
+Restart=always
+RestartSec=5
+{% if sheathd_image_tools | bool %}
+# Deliberately not NoNewPrivileges: adding an image from the interface runs
+# the two shell tools through sudo, and NoNewPrivileges forbids exactly that.
+{% else %}
+NoNewPrivileges=true
+{% endif %}
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

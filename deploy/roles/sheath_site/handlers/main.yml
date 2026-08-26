@@ -1,0 +1,22 @@
+---
+- name: restart sheath-site
+  ansible.builtin.systemd_service:
+    name: sheath-site
+    state: restarted
+    daemon_reload: true
+
+# Restart, not reload. SIGHUP makes dnsmasq re-read /etc/hosts and the
+# reservation directory and nothing else — the configuration file itself is
+# only read at startup. A reload after changing this file leaves the daemon
+# running happily with the settings it had before, which looks like success
+# and is not: it is how a site ends up with DNS and no DHCP.
+#
+# The reservations are a different matter and are not handled here at all:
+# sheath-site writes those and sends the SIGHUP itself.
+- name: restart dnsmasq
+  ansible.builtin.systemd_service:
+    name: dnsmasq
+    state: restarted
+  # A dry run installed nothing, so there is nothing to reload and no unit to
+  # ask about.
+  when: not ansible_check_mode

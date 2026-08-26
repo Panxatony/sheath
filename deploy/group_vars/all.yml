@@ -1,0 +1,21 @@
+---
+# Which build to install. A released tag pulls the binaries from GitHub; set
+# sheath_local_bin_dir instead to install binaries you built yourself, which
+# is what you want while working on Sheath itself.
+sheath_version: latest
+sheath_release_repo: Panxatony/sheath
+sheath_local_bin_dir: ""
+
+# The architecture of the machines. Everything here is arm64 by default
+# because that is what the blades are and what the image preparation needs.
+sheath_arch: arm64
+
+sheath_user: sheath
+sheath_root: /srv/sheath
+sheath_data_dir: /srv/sheath/data
+sheath_images_dir: /srv/sheath/images
+sheath_agent_dir: /srv/sheath/agent
+sheath_tftp_dir: /srv/sheath/tftp
+sheath_logs_dir: /srv/sheath/logs
+sheath_tools_dir: /srv/sheath/tools
+sheath_backup_dir: /srv/sheath/backups

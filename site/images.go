@@ -157,46 +157,81 @@ func (s *site) fetchImage(url, path, sum string) error {
 	return os.Rename(tmp, path)
 }
 
-// ensureBoot keeps the netboot payload in the TFTP root current. Without it a
-// site would serve yesterday's installer to a blade booting today.
+// ensureBoot keeps the netboot payload in the TFTP root current — the whole
+// root, not just boot.img.
 //
-// What is compared is not the file — the file is rewritten after it arrives,
-// see below — but the checksum it had upstream, kept beside it. That is the
-// only thing both ends can agree on, and it is what this site reports as the
-// installer it serves.
+// The CM4 bootloader asks for start4.elf, fixup4.dat, the device tree and
+// config.txt before it looks at boot.img at all. A site holding only boot.img
+// answers "file not found" four times and the blade gives up and boots from
+// its NVMe, which looks exactly like a blade that was never asked to netboot.
+// That is what the second site did on its first evening.
+//
+// What is compared is the version of the set as the centre states it, kept in
+// a stamp beside the files. Not the files themselves: two of them are
+// rewritten after they arrive, so their checksums here are deliberately not
+// the checksums there.
 func (s *site) ensureBoot(d *desired) error {
-	if d.Boot.BootImg == "" {
+	if d.Boot.BootImg == "" && len(d.Boot.Files) == 0 {
 		return nil
 	}
 	if err := os.MkdirAll(s.cfg.TFTPDir, 0o755); err != nil {
 		return err
 	}
-	path := filepath.Join(s.cfg.TFTPDir, "boot.img")
-	_, missing := os.Stat(path)
-	if d.Boot.SHA256 != "" {
-		if s.payloadHeld() == d.Boot.SHA256 && missing == nil {
-			return nil
-		}
-	} else if missing == nil {
-		// Without a checksum there is nothing to compare against, so an
-		// existing payload is left alone rather than re-fetched every pass.
+	stamp := filepath.Join(s.cfg.TFTPDir, ".payload")
+	want := d.Boot.Version
+	if want == "" {
+		want = d.Boot.SHA256 // a centre older than the file list
+	}
+	if want != "" && s.payloadHeld() == want {
 		return nil
 	}
 	if s.dry {
 		return nil
 	}
-	log.Printf("boot payload: fetching %s", d.Boot.BootImg)
-	if err := s.fetchImage(d.Boot.BootImg, path, d.Boot.SHA256); err != nil {
-		return err
+
+	files := d.Boot.Files
+	if len(files) == 0 {
+		// An older centre states one file and no list. Serving only that is
+		// still what it asked for.
+		files = append(files, struct {
+			Name   string `json:"name"`
+			SHA256 string `json:"sha256"`
+			Bytes  int64  `json:"bytes"`
+		}{Name: "boot.img", SHA256: d.Boot.SHA256})
 	}
-	if err := os.WriteFile(path+".upstream", []byte(d.Boot.SHA256+"\n"), 0o644); err != nil {
-		log.Printf("boot payload: stamp not written: %v", err)
+
+	base := strings.TrimRight(d.Boot.ServerURL, "/") + "/boot/"
+	fetched := 0
+	for _, f := range files {
+		if strings.Contains(f.Name, "..") || strings.HasPrefix(f.Name, "/") {
+			log.Printf("boot payload: refusing %q", f.Name)
+			continue
+		}
+		dest := filepath.Join(s.cfg.TFTPDir, filepath.FromSlash(f.Name))
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		if ok, err := s.haveImage(dest, f.SHA256, f.Bytes); err == nil && ok {
+			continue
+		}
+		if err := s.fetchImage(base+f.Name, dest, f.SHA256); err != nil {
+			return fmt.Errorf("%s: %w", f.Name, err)
+		}
+		fetched++
 	}
-	if err := s.aimPayloadHere(path); err != nil {
+
+	if err := s.aimPayloadHere(filepath.Join(s.cfg.TFTPDir, "boot.img")); err != nil {
 		log.Printf("boot payload: %v", err)
 		s.note("", "warn", "netboot payload not aimed at this site: "+err.Error())
 	}
-	s.note("", "info", "netboot payload updated to "+short(d.Boot.SHA256))
+	if err := os.WriteFile(stamp, []byte(want+"\n"), 0o644); err != nil {
+		log.Printf("boot payload: stamp not written: %v", err)
+	}
+	if fetched > 0 {
+		log.Printf("boot payload: %d file(s) fetched, now at %s", fetched, short(want))
+		s.note("", "info", fmt.Sprintf("netboot payload updated to %s (%d file(s))",
+			short(want), fetched))
+	}
 	return nil
 }
 
@@ -210,6 +245,20 @@ func (s *site) aimPayloadHere(path string) error {
 		log.Printf("boot payload: no -relay-url, leaving the server address as built")
 		return nil
 	}
+	// Two of them name a server: the one inside boot.img, which the mini OS
+	// reads, and the one in the TFTP root, which the firmware reads when it
+	// boots the files directly. Aiming one and not the other is how a blade
+	// ends up talking to the wrong machine depending on how it started.
+	plain := filepath.Join(filepath.Dir(path), "cmdline.txt")
+	if b, err := os.ReadFile(plain); err == nil {
+		out := replaceServer(string(b), s.cfg.RelayURL)
+		if strings.TrimSpace(out) != strings.TrimSpace(string(b)) {
+			if err := os.WriteFile(plain, []byte(out+"\n"), 0o644); err != nil {
+				log.Printf("boot payload: cmdline.txt not rewritten: %v", err)
+			}
+		}
+	}
+
 	line, err := readFATFile(path, "cmdline.txt")
 	if err != nil {
 		return fmt.Errorf("cmdline.txt: %w", err)
@@ -242,14 +291,17 @@ func replaceServer(line, url string) string {
 	return strings.Join(fields, " ")
 }
 
-// payloadHeld is the upstream checksum of the payload this site serves, or
-// empty when there is none to speak of.
+// payloadHeld is the version of the payload set this site serves, as the
+// centre stated it, or empty when there is none to speak of.
 func (s *site) payloadHeld() string {
-	b, err := os.ReadFile(filepath.Join(s.cfg.TFTPDir, "boot.img.upstream"))
-	if err != nil {
-		return ""
+	for _, name := range []string{".payload", "boot.img.upstream"} {
+		if b, err := os.ReadFile(filepath.Join(s.cfg.TFTPDir, name)); err == nil {
+			if v := strings.TrimSpace(string(b)); v != "" {
+				return v
+			}
+		}
 	}
-	return strings.TrimSpace(string(b))
+	return ""
 }
 
 func short(sum string) string {

@@ -1,0 +1,24 @@
+---
+# Deploying Sheath: one centre, any number of sites.
+#
+#   ansible-playbook site.yml
+#   ansible-playbook site.yml -l site-b -e sheath_site_enroll_code=ABCD-EFGH-JKLM
+#   ansible-playbook site.yml --check --diff
+#
+# The two roles are independent. A machine may be both, which is how most
+# installations start, and splitting them later is a matter of moving the site
+# to its own host and enrolling it again.
+
+- name: Central server
+  hosts: sheath_centre
+  become: true
+  roles:
+    - role: common
+    - role: sheathd
+
+- name: Sites
+  hosts: sheath_sites
+  become: true
+  roles:
+    - role: common
+    - role: sheath_site

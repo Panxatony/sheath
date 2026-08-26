@@ -197,6 +197,10 @@ type SiteBoot struct {
 	Version    string `json:"version"`
 	CmdlineURL string `json:"cmdline_url"`
 	ServerURL  string `json:"server_url"`
+
+	// Everything the site's TFTP root has to hold, each with its checksum.
+	// The base URL to fetch them from is BaseURL + "/boot/" + Name.
+	Files []payloadFile `json:"files,omitempty"`
 }
 
 func (a *App) siteDesired(id int64) (*SiteDesired, error) {
@@ -265,6 +269,7 @@ func (a *App) siteDesired(id int64) (*SiteDesired, error) {
 		BootImg:    a.baseURL + "/boot/boot.img",
 		SHA256:     pay.SHA256,
 		Version:    pay.Version,
+		Files:      pay.Files,
 		CmdlineURL: a.baseURL + "/boot/cmdline.txt",
 		ServerURL:  a.baseURL,
 	}
