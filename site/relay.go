@@ -113,6 +113,17 @@ func (r *relay) provision(w http.ResponseWriter, req *http.Request) {
 		})
 		return
 	}
+	// An erase is a job the site can hand out on its own: it needs no image
+	// and no decision beyond the one already made.
+	if b.InstallState == "wipe" {
+		log.Printf("wipe %s answered from the cache (offline)", serial)
+		r.s.note(serial, "warn", "erase started from the site cache — centre unreachable")
+		writeJSON(w, 200, map[string]any{
+			"status": "wipe", "serial": serial, "target": "/dev/nvme0n1",
+			"token": b.Token, "message": "erasing the disk (answered by the site, offline)",
+		})
+		return
+	}
 	if b.Image == "" || !b.Netboot {
 		writeJSON(w, 200, map[string]any{
 			"status": "idle", "serial": serial, "image": b.Image, "retry_after": 30,

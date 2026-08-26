@@ -570,7 +570,11 @@ func (c *client) waitForJob(mac string) (*provisionResp, error) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		if job.Status == "go" {
+		// "go" writes an image, "wipe" erases the disk — both are jobs to
+		// carry out. Everything else is a state to keep asking about, and
+		// treating "wipe" as one of those meant a blade polling forever while
+		// the interface said the erase had been handed out.
+		if job.Status == "go" || job.Status == "wipe" {
 			c.token = job.Token
 			return &job, nil
 		}

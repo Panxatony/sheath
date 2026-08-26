@@ -231,7 +231,12 @@ func (a *App) siteDesired(id int64) (*SiteDesired, error) {
 		out.Blades = append(out.Blades, SiteBlade{
 			Serial: b.Serial, MAC: mac, Hostname: host, IP: b.IP,
 			Rack: b.RackName, Slot: *b.Slot,
-			Netboot:       b.InstallState == installPending,
+			// Netboot is armed for both kinds of job: writing an image and
+			// erasing a disk both need the blade to come up in the mini OS.
+			// The server's own syncDHCP is inert wherever a site owns the
+			// wire, so this flag is the only thing that arms anything — a
+			// lesson from an erase that was requested and never happened.
+			Netboot:       b.InstallState == installPending || b.InstallState == installWipe,
 			Image:         b.Image,
 			Token:         tok,
 			Config:        cfg,
@@ -961,7 +966,11 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 	if b.InstallState == installWipe {
 		var wtok string
 		_ = a.db.QueryRow(`SELECT token FROM blades WHERE serial=?`, serial).Scan(&wtok)
-		a.logEvent(serial, "warn", "erase job handed out")
+		// Logged once per netboot session, not once per poll: the installer
+		// asks every ten seconds and the log is for people.
+		if worthLogging(serial, "wipe-handout", 0) {
+			a.logEvent(serial, "warn", "erase job handed out")
+		}
 		_, _ = a.db.Exec(`UPDATE blades SET state='provisioning' WHERE serial=?`, serial)
 		writeJSON(w, 200, map[string]any{
 			"status":     "wipe",

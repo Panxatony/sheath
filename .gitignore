@@ -2,6 +2,7 @@
 /server/rookery
 /agent/rookery-agent
 /installer/rookery-installer
+/site/rookery-site
 *.test
 
 # Local only: work in progress and previews
