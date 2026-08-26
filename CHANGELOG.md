@@ -5,6 +5,14 @@ on `main`.
 
 ## Unreleased
 
+## v0.8.1-alpha — 2026-08-26
+
+The first release with two sites actually running: a centre on one machine, a
+site in each of two buildings, and blades installed from both. Alpha because
+the things it does have been done on one rack of five blades, and because two
+of them still lean on the networks here being routed to each other — see
+"Known limitations" in the release notes.
+
 ### Added
 - **A site signs itself in.** The interface issues a code — short enough to
   read out loud, good once, good for an hour — and `sheath-site --enroll CODE`
@@ -14,7 +22,7 @@ on `main`.
   wrong code is refused in constant time and without saying which part was
   wrong; a spent one is refused outright.
 - The mini OS reads the module too, and gets there first: the hardware block
-  now travels with the installer'"'"'s very first question, so the inventory can
+  now travels with the installer's very first question, so the inventory can
   say "8 GB, Lite, no eMMC" while the blade is still waiting for someone to
   choose an image for it. The centre folds those facts into what it knows
   rather than replacing it — the mini OS knows the hardware, the agent knows
