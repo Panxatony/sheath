@@ -162,6 +162,9 @@ var migrations = []string{
 	`ALTER TABLE images ADD COLUMN kernel TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN min_disk INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE images ADD COLUMN verified INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE images ADD COLUMN state TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
 }
 
 const (
@@ -255,6 +258,13 @@ type Image struct {
 	Kernel   string `json:"kernel"`   // downstream | upstream | ""
 	MinDisk  int64  `json:"min_disk"` // bytes, 0 = unknown
 	Verified bool   `json:"verified"` // has actually been booted on a blade
+
+	// How far the preparation has come. An entry somebody typed a URL for is
+	// not yet an image anyone can install, and calling it ready before the
+	// bytes are here would be the kind of lie that costs an afternoon.
+	State   string `json:"state"` // "" (older entries) | queued | working | ready | error
+	Note    string `json:"note_state"`
+	Updated string `json:"updated"`
 }
 
 func openDB(path string) (*sql.DB, error) {
@@ -859,7 +869,7 @@ func (a *App) imageExists(id string) bool {
 
 func (a *App) listImages() ([]Image, error) {
 	rows, err := a.db.Query(`SELECT id,url,sha256,seed,os_id,notes,local,bytes,created,
-		kernel,min_disk,verified FROM images ORDER BY id`)
+		kernel,min_disk,verified,state,note,updated FROM images ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -870,7 +880,7 @@ func (a *App) listImages() ([]Image, error) {
 		var verified int
 		if err := rows.Scan(&i.ID, &i.URL, &i.SHA256, &i.Seed, &i.OSID,
 			&i.Notes, &i.Local, &i.Bytes, &i.Created,
-			&i.Kernel, &i.MinDisk, &verified); err != nil {
+			&i.Kernel, &i.MinDisk, &verified, &i.State, &i.Note, &i.Updated); err != nil {
 			return nil, err
 		}
 		i.Verified = verified != 0

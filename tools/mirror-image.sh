@@ -14,11 +14,28 @@
 
 set -euo pipefail
 
+# --root=DIR ahead of everything else, because sudo drops the environment and
+# a tool that silently works in the wrong directory is worse than one that
+# refuses to start.
 ROOT=${SHEATH_ROOT:-/srv/sheath}
+case "${1:-}" in
+--root=*) ROOT=${1#--root=}; shift ;;
+esac
 DIR="$ROOT/images"
 ID=${1:?usage: mirror-image.sh <id> <url> [os-id]}
 URL=${2:?usage: mirror-image.sh <id> <url> [os-id]}
 OS=${3:-$(printf '%s' "$ID" | cut -d- -f1)}
+
+# The server may invoke this through sudo, so the arguments are checked here
+# too and not only where they were typed: an id with a slash in it would write
+# as root wherever the slash pointed.
+case "$ID" in
+*[!A-Za-z0-9._-]* | "" | .* ) echo "invalid image id: $ID" >&2; exit 2 ;;
+esac
+case "$URL" in
+http://* | https://*) ;;
+*) echo "invalid URL: $URL" >&2; exit 2 ;;
+esac
 
 BASE=$(basename "$URL")
 TMP="$ROOT/tmp/mirror.$$"

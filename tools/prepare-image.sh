@@ -17,7 +17,13 @@
 
 set -euo pipefail
 
+# --root=DIR ahead of everything else, because sudo drops the environment and
+# a tool that silently works in the wrong directory is worse than one that
+# refuses to start.
 ROOT=${SHEATH_ROOT:-/srv/sheath}
+case "${1:-}" in
+--root=*) ROOT=${1#--root=}; shift ;;
+esac
 DIR="$ROOT/images"
 ID=${1:?usage: prepare-image.sh <catalogue-id> [package ...]}
 shift
@@ -25,6 +31,17 @@ PKGS=("$@")
 [ ${#PKGS[@]} -gt 0 ] || PKGS=(openssh-server)
 
 say() { printf '[%s] %s\n' "$(date +%T)" "$1"; }
+
+# Checked here as well as where they were typed: the server may invoke this
+# through sudo, the id goes into a SQL query and the package names go to apt.
+case "$ID" in
+*[!A-Za-z0-9._-]* | "" | .*) echo "invalid image id: $ID" >&2; exit 2 ;;
+esac
+for p in "${PKGS[@]}"; do
+  case "$p" in
+  *[!A-Za-z0-9.+-]* | "") echo "invalid package name: $p" >&2; exit 2 ;;
+  esac
+done
 
 FILE=$(sudo sqlite3 "$ROOT/data/sheath.db" "SELECT local FROM images WHERE id='$ID';")
 [ -n "$FILE" ] || { echo "no local file for $ID in the catalogue" >&2; exit 1; }

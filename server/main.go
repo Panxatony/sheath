@@ -19,7 +19,12 @@ type App struct {
 	baseURL    string
 	localDHCP  bool
 	imagesDir  string
+	toolsDir   string
+	rootDir    string
 	sess       *sessions
+
+	// Fetching and preparing images, one at a time
+	imgQ imageQueue
 
 	// Site networks, memoised for the duration of one request
 	netCacheMu sync.Mutex
@@ -37,6 +42,9 @@ func main() {
 		dbPath    = flag.String("db", "/srv/sheath/data/sheath.db", "path to the SQLite file")
 		imagesDir = flag.String("images", "/srv/sheath/images", "directory holding the OS images")
 		agentDir  = flag.String("agent", "/srv/sheath/agent", "directory holding the agent binary")
+		toolsDir  = flag.String("tools", "/srv/sheath/tools",
+			"directory holding the shell tools the server runs to fetch and prepare images")
+		rootDir   = flag.String("root", "/srv/sheath", "directory the tools work in")
 		baseURL   = flag.String("base-url", "", "base URL reachable from the blades (default: http://<net_base>.10:8080)")
 		netBase   = flag.String("net-base", "", "base of the blade network, e.g. 10.0.0 (needed on first start only)")
 		localDHCP = flag.Bool("local-dhcp", true,
@@ -57,7 +65,8 @@ func main() {
 	}
 	defer db.Close()
 
-	app := &App{db: db, imagesDir: *imagesDir, sess: newSessions()}
+	app := &App{db: db, imagesDir: *imagesDir, toolsDir: *toolsDir, rootDir: *rootDir,
+		sess: newSessions()}
 
 	if *netBase != "" {
 		if err := app.setSetting("net_base", *netBase); err != nil {
@@ -118,6 +127,8 @@ func main() {
 
 	mux.HandleFunc("GET /api/v1/images", app.requireAdmin(app.hImagesList))
 	mux.HandleFunc("POST /api/v1/images", app.requireAdmin(app.hImagesCreate))
+	mux.HandleFunc("POST /api/v1/images/fetch", app.requireAdmin(app.hImagesFetch))
+	mux.HandleFunc("DELETE /api/v1/images/{id}", app.requireAdmin(app.hImageDelete))
 
 	mux.HandleFunc("GET /api/v1/config/{scope}", app.requireAdmin(app.hConfigGet))
 	mux.HandleFunc("PUT /api/v1/config/{scope}", app.requireAdmin(app.hConfigPut))
@@ -166,6 +177,9 @@ func main() {
 	mux.HandleFunc("GET /settings", app.requireUI(app.hSettings))
 	mux.HandleFunc("POST /settings", app.requireUI(app.hSettingsSave))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
+	mux.HandleFunc("GET /images", app.requireUI(app.hImagesPage))
+	mux.HandleFunc("POST /images/add", app.requireUI(app.hUIImageAdd))
+	mux.HandleFunc("POST /images/{id}/remove", app.requireUI(app.hUIImageRemove))
 	mux.HandleFunc("GET /sites/{id}", app.requireUI(app.hSitePage))
 	mux.HandleFunc("GET /bladerunners/{id}", app.requireUI(app.hRackPage))
 

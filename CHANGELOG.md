@@ -6,6 +6,19 @@ on `main`.
 ## Unreleased
 
 ### Added
+- An **Images** page. An image is added by pasting its download address: the
+  server recognises the source, fetches it, unpacks a tarball where there is
+  one, installs into the image what that distribution needs, clears the
+  identity it was built with, checksums it and enters it in the catalogue.
+  Ubuntu 24.04, DietPi v10 and Debian 13 Trixie are recognised by their URL and
+  carry their own recipe — which kernel flavour they run (and therefore whether
+  the smart fan will report), how much disk they need, what has to be installed
+  before a blade sees them. Adding an image used to be two commands on the
+  server, run in the right order by whoever remembered them; the page runs the
+  same two scripts, one job at a time, and says where it got to instead of
+  failing quietly. `POST /api/v1/images/fetch` and `DELETE /api/v1/images/{id}`
+  do the same over the API; removal refuses while a blade is installed from the
+  image or while the work is still running.
 - A settings page for the two sections a person actually turns knobs in: what
   the agent does on a blade (interval, jitter, allowed commands, restarting
   itself after a boot configuration change, and the window for it) and how an

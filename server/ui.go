@@ -1708,6 +1708,7 @@ const headHTML = `<!doctype html><html lang="{{.L}}"><head><meta charset="utf-8"
 const navBar = `<nav class="nav" aria-label="{{t .L "nav.label"}}">
   <a href="/"{{if eq .Path "/"}} class="here" aria-current="page"{{end}}>{{t .L "nav.overview"}}</a>
   <a href="/map"{{if eq .Path "/map"}} class="here" aria-current="page"{{end}}>{{t .L "nav.map"}}</a>
+  <a href="/images"{{if eq .Path "/images"}} class="here" aria-current="page"{{end}}>{{t .L "img.title"}}</a>
   <a href="/settings"{{if eq .Path "/settings"}} class="here" aria-current="page"{{end}}>{{t .L "set.title"}}</a>
   {{if .LocalSite}}<a href="/sites/{{.LocalSite}}"{{if hasPrefix .Path "/sites/"}} class="here" aria-current="page"{{end}}>{{t .L "site.title"}}</a>{{end}}
 </nav>`
@@ -3058,6 +3059,195 @@ var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse
   </div>
 </div>
 </form>
+
+<footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
+<span>{{t .L "foot.api"}}</span></footer>
+</div></body></html>`))
+
+// ── Images ───────────────────────────────────────────────────────────
+//
+// Adding an image used to be two commands on the server, run in the right
+// order by whoever remembered them. The page does the same two things and
+// says out loud where it got to, so a fetch that fails is visible instead of
+// silent.
+
+type imageRow struct {
+	Image
+	Size     string
+	State    string // shown to the reader
+	LED      string // ok | warn | bad | ""
+	Note     string
+	Kern     string
+	InUse    int
+	Recipe   string
+	Blocking bool // being worked on: cannot be removed
+}
+
+func (a *App) hImagesPage(w http.ResponseWriter, r *http.Request) {
+	l := a.resolveLang(w, r)
+	imgs, _ := a.listImages()
+	msg, errMsg := flash(r)
+
+	used := map[string]int{}
+	if blades, err := a.listBlades(); err == nil {
+		for _, b := range blades {
+			if b.Image != "" {
+				used[b.Image]++
+			}
+		}
+	}
+
+	rows := make([]imageRow, 0, len(imgs))
+	working := false
+	for _, im := range imgs {
+		row := imageRow{Image: im, Size: human(im.Bytes), InUse: used[im.ID], Note: im.Note}
+		switch im.State {
+		case imgQueued:
+			row.State, row.LED = T(l, "img.st.queued"), "warn"
+			row.Blocking = true
+			working = true
+		case imgWorking:
+			row.State, row.LED = T(l, "img.st.work"), "warn"
+			row.Blocking = true
+			working = true
+		case imgError:
+			row.State, row.LED = T(l, "img.st.error"), "bad"
+		default:
+			// Everything from before this page existed, and everything done.
+			if im.Local != "" {
+				row.State, row.LED = T(l, "img.st.local"), "ok"
+			} else {
+				row.State, row.LED = T(l, "img.st.remote"), ""
+			}
+		}
+		switch im.Kernel {
+		case "downstream":
+			row.Kern = T(l, "img.k.down")
+		case "upstream":
+			row.Kern = T(l, "img.k.up")
+		}
+		if rec, ok := matchRecipe(im.ID, im.URL); ok {
+			row.Recipe = rec.Name
+		}
+		rows = append(rows, row)
+	}
+
+	// One line per distribution, not per rule: the general Debian entry
+	// exists so an older release still lands somewhere, and naming it beside
+	// the Trixie one would read as two different things to choose between.
+	known := make([]string, 0, len(recipes))
+	seen := map[string]bool{}
+	for _, rec := range recipes {
+		if !seen[rec.OSID] {
+			seen[rec.OSID] = true
+			known = append(known, rec.Name)
+		}
+	}
+
+	render(w, imagesTmpl, map[string]any{
+		"L": l, "Path": "/images", "LocalSite": a.localSiteID(),
+		"Rows": rows, "Known": known, "Refresh": working,
+		"Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
+	})
+}
+
+func (a *App) hUIImageAdd(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, "/images", "err", T(l, "err.form"))
+		return
+	}
+	id, _, err := a.startImageFetch(imageFetchReq{
+		ID:       strings.TrimSpace(r.FormValue("id")),
+		URL:      strings.TrimSpace(r.FormValue("url")),
+		Packages: strings.TrimSpace(r.FormValue("packages")),
+		NoPrep:   r.FormValue("no_prepare") != "",
+	})
+	if err != nil {
+		redirectMsg(w, r, "/images", "err", errText(l, err))
+		return
+	}
+	redirectMsg(w, r, "/images", "msg", fmt.Sprintf(T(l, "img.queued"), id))
+}
+
+func (a *App) hUIImageRemove(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	id := r.PathValue("id")
+	if err := a.removeImage(id); err != nil {
+		redirectMsg(w, r, "/images", "err", errText(l, err))
+		return
+	}
+	redirectMsg(w, r, "/images", "msg", fmt.Sprintf(T(l, "img.removed"), id))
+}
+
+var imagesTmpl = template.Must(template.New("images").Funcs(tmplFuncs).Parse(headHTML + `
+<div class="wrap">
+<header class="top">` + brandBar + `
+<div class="pagehead">
+  <h1>{{t .L "img.title"}}</h1>
+  <p class="sub">{{t .L "img.lead"}}</p>
+</div>
+<div class="meta"><span>{{t .L "img.title"}} <b>{{len .Rows}}</b></span></div>
+</header>
+
+{{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
+{{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "img.title"}}</h2></div>
+  {{if .Rows}}
+  <table class="tbl">
+    <thead><tr><th>{{t .L "img.name"}}</th><th>{{t .L "img.state"}}</th>
+      <th>{{t .L "img.size"}}</th><th>{{t .L "img.kernel"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td><b>{{.ID}}</b>
+          {{if .Recipe}}<div class="hint">{{.Recipe}}</div>{{end}}
+          {{if .Notes}}<div class="hint">{{.Notes}}</div>{{end}}</td>
+        <td><span class="chip {{.LED}}">{{.State}}</span>
+          {{if .Verified}}<div class="hint">{{t $.L "img.verified"}}</div>{{end}}
+          {{if .Note}}<div class="hint">{{.Note}}</div>{{end}}</td>
+        <td class="num">{{.Size}}
+          {{if .InUse}}<div class="hint">{{.InUse}} {{t $.L "img.blades"}}</div>{{end}}</td>
+        <td>{{if .Kern}}<span class="hint">{{.Kern}}</span>{{end}}</td>
+        <td class="right">
+          {{if not .Blocking}}
+          <form method="post" action="/images/{{.ID}}/remove"
+                onsubmit="return confirm('{{printf (t $.L "img.rmask") .ID}}')">
+            <button class="ghost danger">{{t $.L "img.remove"}}</button></form>
+          {{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="body"><p class="hint">{{t .L "img.none"}}</p></div>{{end}}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "img.add"}}</h2>
+    <span class="tag">{{t .L "img.known"}}: {{range $i, $k := .Known}}{{if $i}} · {{end}}{{$k}}{{end}}</span></div>
+  <div class="body">
+    <form method="post" action="/images/add">
+      <div class="setgrid">
+        <div class="wide"><label for="url">{{t .L "img.url"}}</label>
+          <input id="url" type="url" name="url" required
+                 placeholder="https://…/ubuntu-24.04-preinstalled-server-arm64+raspi.img.xz">
+          <p class="hint">{{t .L "img.urlhint"}}</p></div>
+        <div><label for="iid">{{t .L "img.id"}}</label>
+          <input id="iid" type="text" name="id" placeholder="{{t .L "img.idhint"}}"></div>
+        <div><label for="pk">{{t .L "img.pkgs"}}</label>
+          <input id="pk" type="text" name="packages" placeholder="{{t .L "img.pkgshint"}}"></div>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" name="no_prepare" value="1"> {{t .L "img.noprep"}}</label>
+      </div>
+      <div style="margin-top:1.2rem"><button type="submit">{{t .L "img.fetch"}}</button></div>
+    </form>
+  </div>
+</div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
 <span>{{t .L "foot.api"}}</span></footer>
