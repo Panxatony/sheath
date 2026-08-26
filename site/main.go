@@ -57,17 +57,41 @@ func main() {
 		relayURL = flag.String("relay-url", "",
 			"URL blades at this site should use, e.g. http://10.0.0.10:8081 — "+
 				"written into the netboot payload so a blade here talks to this site")
+		enrollCode = flag.String("enroll", "",
+			"one-time code from the interface; exchanged for this site's token on first start")
 		once   = flag.Bool("once", false, "run a single pass and exit")
 		dryRun = flag.Bool("dry-run", false, "compute everything, write nothing")
 	)
 	flag.Parse()
 
-	if *server == "" || *siteID == 0 {
-		log.Fatal("-server and -site are required")
+	if *server == "" {
+		log.Fatal("-server is required")
 	}
-	tok, err := os.ReadFile(*tokenFile)
-	if err != nil {
-		log.Fatalf("token: %v", err)
+
+	// The token comes from one of three places, in this order: the file it
+	// was written to last time, an enrollment code given now, or nowhere —
+	// and nowhere is a reason to stop rather than to run without one.
+	tok, terr := os.ReadFile(*tokenFile)
+	if (terr != nil || len(strings.TrimSpace(string(tok))) == 0) && *enrollCode != "" {
+		en, err := enroll(*server, *enrollCode, *tokenFile)
+		if err != nil {
+			log.Fatalf("enrollment: %v", err)
+		}
+		log.Printf("enrolled as site %d (%s), token written to %s",
+			en.SiteID, en.Name, *tokenFile)
+		tok, terr = []byte(en.Token), nil
+		if *siteID == 0 {
+			*siteID = en.SiteID
+		}
+	}
+	if terr != nil {
+		log.Fatalf("token: %v (enroll with -enroll CODE)", terr)
+	}
+	if *siteID == 0 {
+		*siteID = readSiteID(*tokenFile)
+	}
+	if *siteID == 0 {
+		log.Fatal("-site is required (or enroll with -enroll CODE, which records it)")
 	}
 
 	c := config{

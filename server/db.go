@@ -173,6 +173,8 @@ var migrations = []string{
 	`ALTER TABLE images ADD COLUMN verified INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE images ADD COLUMN state TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN payload TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN enroll_code TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN enroll_until TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -214,6 +216,11 @@ type Site struct {
 	// that reported nothing.
 	Payload     string `json:"payload"`
 	SiteVersion string `json:"site_version"`
+
+	// A pending enrollment code, and how long it is good for. Never
+	// serialised outwards for the same reason the token is not.
+	EnrollCode  string `json:"-"`
+	EnrollUntil string `json:"-"`
 }
 
 type Rack struct {
@@ -916,14 +923,15 @@ func (a *App) listImages() ([]Image, error) {
 
 const siteCols = `id,name,location,net_base,gateway,dns,domain,
 	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created,
-	payload,site_version`
+	payload,site_version,enroll_code,enroll_until`
 
 func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	var st Site
 	var local int
 	err := sc.Scan(&st.ID, &st.Name, &st.Location, &st.NetBase, &st.Gateway, &st.DNS,
 		&st.Domain, &st.PoolFrom, &st.PoolTo, &st.OffsetBase, &st.OffsetStep,
-		&local, &st.Token, &st.LastSeen, &st.Created, &st.Payload, &st.SiteVersion)
+		&local, &st.Token, &st.LastSeen, &st.Created, &st.Payload, &st.SiteVersion,
+		&st.EnrollCode, &st.EnrollUntil)
 	if err != nil {
 		return nil, err
 	}
@@ -1179,4 +1187,27 @@ func (a *App) clearAlert(serial string) error {
 func (a *App) recordSiteSelf(id int64, payload, siteVersion string) {
 	_, _ = a.db.Exec(`UPDATE sites SET payload=?, site_version=? WHERE id=?`,
 		payload, siteVersion, id)
+}
+
+// mergeFacts folds a few facts into what is already known about a blade,
+// leaving the rest alone. The mini OS knows the hardware and nothing about
+// the operating system; the agent knows both. Whichever spoke last should not
+// erase what the other one said.
+func (a *App) mergeFacts(serial string, add map[string]any) {
+	var raw string
+	if err := a.db.QueryRow(`SELECT facts_json FROM blades WHERE serial=?`, serial).Scan(&raw); err != nil {
+		return
+	}
+	facts := map[string]any{}
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &facts)
+	}
+	for k, v := range add {
+		facts[k] = v
+	}
+	out, err := json.Marshal(facts)
+	if err != nil {
+		return
+	}
+	_, _ = a.db.Exec(`UPDATE blades SET facts_json=? WHERE serial=?`, string(out), serial)
 }

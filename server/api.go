@@ -920,6 +920,10 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 	serial := r.PathValue("serial")
 	var in struct {
 		MAC string `json:"mac"`
+		// The mini OS reads the module the same way the agent does, and it
+		// gets there first: this is what the inventory shows for a blade that
+		// has been plugged in and not yet installed.
+		Hardware map[string]any `json:"hardware"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
 
@@ -937,6 +941,11 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.logEvent(serial, "info", "unknown blade seen during netboot")
+		b, _ = a.getBlade(serial)
+	}
+
+	if len(in.Hardware) > 0 {
+		a.mergeFacts(serial, in.Hardware)
 		b, _ = a.getBlade(serial)
 	}
 

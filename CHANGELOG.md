@@ -6,6 +6,19 @@ on `main`.
 ## Unreleased
 
 ### Added
+- **A site signs itself in.** The interface issues a code — short enough to
+  read out loud, good once, good for an hour — and `sheath-site --enroll CODE`
+  exchanges it for the permanent token, written straight into a file the site
+  machine owns with mode `0600`, along with the site id beside it. Neither the
+  id nor the token needs to appear in a unit file or a shell history again. A
+  wrong code is refused in constant time and without saying which part was
+  wrong; a spent one is refused outright.
+- The mini OS reads the module too, and gets there first: the hardware block
+  now travels with the installer'"'"'s very first question, so the inventory can
+  say "8 GB, Lite, no eMMC" while the blade is still waiting for someone to
+  choose an image for it. The centre folds those facts into what it knows
+  rather than replacing it — the mini OS knows the hardware, the agent knows
+  the hardware and the operating system.
 - An **Inventory** page: every blade across every site with what it is made
   of — module and board revision, memory, SoC, cores and clock, eMMC or Lite,
   the NVMe and its model — and a line saying what the fleet adds up to. The

@@ -579,7 +579,12 @@ func (c *client) syncClock() {
 }
 
 func (c *client) waitForJob(mac string) (*provisionResp, error) {
-	body, _ := json.Marshal(map[string]string{"mac": mac})
+	// What this module is, sent with the very first question it asks. The
+	// alternative is finding out after the installation, from the agent, at
+	// which point the choice of image has already been made — and a Lite with
+	// no eMMC or a module with half the memory is exactly the kind of thing
+	// worth knowing before that.
+	body, _ := json.Marshal(map[string]any{"mac": mac, "hardware": hardware()})
 	announced, idleShown := false, false
 	var idleSince time.Time
 	for {

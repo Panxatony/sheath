@@ -10,9 +10,14 @@ Type=simple
 # and reloads dnsmasq. The blast radius is one site's network configuration,
 # which is exactly what this program is for.
 User=root
+# Neither the site id nor the token appear here. Both were written beside each
+# other when the site enrolled — once, with a code from the interface:
+#
+#   sheath-site --server http://<centre>:8080 --enroll ABCD-EFGH-JKLM
+#
 ExecStart=/usr/local/bin/sheath-site \
     --server=http://127.0.0.1:8080 \
-    --site=1 \
+    --relay-url=http://10.0.0.10:8081 \
     --token-file=/etc/sheath-site/token \
     --dhcp-hosts=/etc/sheath/dhcp-hosts \
     --dnsmasq-log=/srv/sheath/logs/dnsmasq.log \

@@ -1484,6 +1484,15 @@ text-transform:uppercase;color:var(--ink-3);padding:.7rem .9rem;border-bottom:1p
 td{padding:.6rem .9rem;border-bottom:1px solid var(--rule);vertical-align:middle}
 tr:last-child td{border-bottom:0}
 .mono{font:.92rem/1.5 ui-monospace,monospace;color:var(--ink-2)}
+/* An enrollment code is read off the screen and typed somewhere else, so it
+   is set large enough to read at arm's length and spaced so the groups do not
+   run together. */
+.code{font:1.5rem/1.3 ui-monospace,monospace;letter-spacing:.12em;color:var(--ink);
+  background:var(--surface-2);border:1px solid var(--rule);border-radius:8px;
+  padding:.7rem 1rem;display:inline-block;margin:0 0 1rem;user-select:all}
+.cmd{font:.9rem/1.5 ui-monospace,monospace;color:var(--ink-2);background:var(--surface-2);
+  border:1px solid var(--rule);border-radius:8px;padding:.7rem 1rem;margin:.4rem 0 0;
+  overflow-x:auto;white-space:pre;user-select:all}
 .host{font-weight:600}
 .slotno{font:600 1rem/1 ui-monospace,monospace;color:var(--ink-3);width:3.2rem}
 .led{display:inline-block;width:.58rem;height:.58rem;border-radius:50%;
@@ -2657,10 +2666,14 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, led, seenAt := siteHealth(l, *st)
+	code, left := a.enrollState(*st)
 	centre := a.payload()
 	payKey, payLED := payloadState(centre.SHA256, st.Payload)
 	msg, errMsg := flash(r)
 	render(w, siteTmpl, map[string]any{
+		"Code":      code,
+		"CodeLeft":  fmt.Sprintf(T(l, "enr.valid"), humanDur(l, left)),
+		"EnrollCmd": enrollCommand(a.baseURL, code),
 		"Pay":       T(l, payKey),
 		"PayLED":    payLED,
 		"PayHere":   shortOr(st.Payload),
@@ -2721,6 +2734,22 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
 {{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
 {{if not .HasToken}}<div class="bad">{{t .L "site.notoken"}}</div>{{end}}
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "enr.title"}}</h2>
+    <span class="tag">{{if .Code}}{{.CodeLeft}}{{else}}{{t .L "enr.gone"}}{{end}}</span></div>
+  <div class="body">
+    <p class="hint" style="margin:0 0 1rem">{{t .L "enr.lead"}}</p>
+    {{if .Code}}
+      <p class="code">{{.Code}}</p>
+      <p class="hint">{{t .L "enr.run"}}</p>
+      <pre class="cmd">{{.EnrollCmd}}</pre>
+    {{else}}
+      {{if .HasToken}}<p class="hint">{{t .L "enr.has"}}</p>{{end}}
+      <form method="post" action="/sites/{{.S.ID}}/enroll"><button>{{t .L "enr.make"}}</button></form>
+    {{end}}
+  </div>
+</div>
 
 <div class="card">
   <div class="card-head"><h2>{{t .L "pay.title"}}</h2>
@@ -3570,3 +3599,41 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
 <span>{{t .L "foot.api"}}</span></footer>
 </div></body></html>`))
+
+// hUISiteEnroll makes a code and shows it once. Once, because a code that is
+// still on a page an hour later is a code somebody left on a screen.
+func (a *App) hUISiteEnroll(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	code, _, err := a.makeEnrollCode(id)
+	if err != nil {
+		redirectMsg(w, r, "/sites/"+strconv.FormatInt(id, 10), "err", errText(l, err))
+		return
+	}
+	// Not in the URL: an address is written down in logs, in histories and in
+	// whatever the browser syncs. The page reads the pending code from the
+	// database instead, and stops showing it the moment it is spent.
+	_ = code
+	redirectMsg(w, r, "/sites/"+strconv.FormatInt(id, 10), "msg", T(l, "enr.made"))
+}
+
+// enrollCommand is the line to type on the site machine. Shown in full, with
+// the code in it, because the alternative is somebody assembling it from
+// three places in the documentation and getting one of them wrong.
+func enrollCommand(base, code string) string {
+	if code == "" {
+		return ""
+	}
+	return "sheath-site --server " + base + " --enroll " + code
+}
+
+// humanDur says a duration the way somebody reads a deadline.
+func humanDur(l Lang, d time.Duration) string {
+	if d <= 0 {
+		return "—"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%d min", int(d.Minutes()))
+	}
+	return fmt.Sprintf("%.0f h %d min", d.Hours(), int(d.Minutes())%60)
+}

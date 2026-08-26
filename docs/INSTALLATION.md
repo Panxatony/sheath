@@ -358,30 +358,44 @@ the file is missing at start, a fresh token is generated.
 Adjust the site now if the defaults do not fit — on `/sites/1`, or over the API
 with `PUT /api/v1/sites/1`.
 
-### 3.5 A token for the site
+### 3.5 The site signs itself in
 
-The site authenticates every call with its own credential, not with the admin
-token. It may read the desired state of **its** BladeRunners, report events for
-**its** blades, and relay for **its** blades — and nothing else.
-`POST /api/v1/sites/{id}/token`, with the admin token, issues one:
+A site needs a credential to read its desired state, report what it sees and
+relay for its blades. It asks for one rather than being handed one: the
+interface issues a code, the site exchanges it for its permanent token, and the
+token is written straight into a file the site machine owns.
+
+On the site page in the interface, **Create an enrollment code**. The code is
+short enough to read out loud, good **once**, and good for **an hour**:
+
+```text
+Z78E-KZQP-EN9Q
+```
+
+Over the API instead, if that is easier:
 
 ```sh
-T=$(sudo cat /srv/sheath/data/admin-token)
 curl -sS -X POST -H "Authorization: Bearer $T" \
-     http://10.0.0.10:8080/api/v1/sites/1/token
+     http://10.0.0.10:8080/api/v1/sites/2/enroll-code
 ```
 
-The answer carries the token once. It is stored as it is, so a site that lost it
-gets a new one rather than the old one back — issuing again rotates it and the
-running site stops being able to pull until the file is updated.
+Then, once, on the site machine:
 
 ```sh
-sudo install -m 0600 -o root -g root /dev/null /etc/sheath-site/token
-printf '%s\n' '<the token from the answer>' | sudo tee /etc/sheath-site/token >/dev/null
+sudo /usr/local/bin/sheath-site --server http://10.0.0.10:8080 \
+     --relay-url http://10.0.1.10:8081 --enroll Z78E-KZQP-EN9Q --once
 ```
 
-A site without a token gets a plain refusal from every endpoint: `site 1 has no
-token yet`.
+It writes `/etc/sheath-site/token` with mode `0600` and, beside it,
+`/etc/sheath-site/site-id`. From then on neither the id nor the token needs to
+appear in the unit file, on a command line, or in anyone's clipboard. Lower
+case, spaces instead of dashes and a missing dash are all accepted — the code
+is normalised before it is compared.
+
+A spent code is refused, and so is one over an hour old. Issuing a new code for
+a site that already has a token is allowed and replaces it, which also means
+the site holding the old token stops being able to report: the interface says
+so before you do it.
 
 ### 3.6 dnsmasq
 

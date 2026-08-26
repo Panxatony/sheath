@@ -141,6 +141,9 @@ func main() {
 	mux.HandleFunc("POST /api/v1/images", app.requireAdmin(app.hImagesCreate))
 	mux.HandleFunc("POST /api/v1/backup", app.requireAdmin(app.hBackupNow))
 	mux.HandleFunc("GET /api/v1/payload", app.requireAdmin(app.hPayload))
+	mux.HandleFunc("POST /api/v1/sites/{id}/enroll-code", app.requireAdmin(app.hSiteEnrollCode))
+	// No admin token on this one: the code in the body is the credential.
+	mux.HandleFunc("POST /api/v1/site/enroll", app.hSiteEnroll)
 	mux.HandleFunc("POST /api/v1/images/fetch", app.requireAdmin(app.hImagesFetch))
 	mux.HandleFunc("DELETE /api/v1/images/{id}", app.requireAdmin(app.hImageDelete))
 
@@ -192,6 +195,7 @@ func main() {
 	mux.HandleFunc("POST /settings", app.requireUI(app.hSettingsSave))
 	mux.HandleFunc("POST /settings/backup", app.requireUI(app.hUIBackupNow))
 	mux.HandleFunc("POST /settings/notify", app.requireUI(app.hUINotifySave))
+	mux.HandleFunc("POST /sites/{id}/enroll", app.requireUI(app.hUISiteEnroll))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
 	mux.HandleFunc("GET /inventory", app.requireUI(app.hInventory))
 	mux.HandleFunc("GET /api/v1/inventory", app.requireAdmin(app.hInventoryAPI))

@@ -283,6 +283,16 @@ var catalog = map[string]map[Lang]string{
 	"img.remove":    {LangEN: "Remove", LangDE: "Entfernen"},
 	"img.rmask":     {LangEN: "Remove %s including the mirrored file?", LangDE: "%s samt gespiegelter Datei entfernen?"},
 
+	"enr.title": {LangEN: "Enrollment", LangDE: "Anmeldung"},
+	"enr.make":  {LangEN: "Create an enrollment code", LangDE: "Anmeldecode erzeugen"},
+	"enr.code":  {LangEN: "Code", LangDE: "Code"},
+	"enr.valid": {LangEN: "good once, expires in %s", LangDE: "einmal gültig, läuft in %s ab"},
+	"enr.gone":  {LangEN: "no code outstanding", LangDE: "kein Code offen"},
+	"enr.has":   {LangEN: "This site already has a token. A new code replaces it — the site that holds the old one stops being able to report.", LangDE: "Dieser Standort hat schon ein Token. Ein neuer Code ersetzt es — der Standort mit dem alten kann dann nichts mehr melden."},
+	"enr.run":   {LangEN: "On the site machine:", LangDE: "Auf der Standort-Maschine:"},
+	"enr.lead":  {LangEN: "A code the site signs itself in with, instead of a token carried there by hand. Good once, good for an hour.", LangDE: "Ein Code, mit dem sich der Standort selbst anmeldet, statt ein Token von Hand hinzutragen. Einmal gültig, eine Stunde lang."},
+	"enr.made":  {LangEN: "Code created — it is shown once", LangDE: "Code erzeugt — er wird einmal angezeigt"},
+
 	"inv.title": {LangEN: "Inventory", LangDE: "Inventar"},
 	"inv.lead": {
 		LangEN: "What is screwed into the racks, across every site. This is what the blades reported about themselves, not a probe: a blade that has been away for a week still shows what it last said.",
