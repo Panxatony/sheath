@@ -116,11 +116,25 @@ func (a *App) rackIndex(rk Rack) int {
 	return (rk.IPOffset-base)/step + 1
 }
 
-func bladeMAC(rackIdx int64, slot int) string {
-	return fmt.Sprintf("02:b1:ad:%02x:00:%02x", rackIdx&0xff, slot&0xff)
+// bladeMAC is the address handed to a blade that has not shown its own yet.
+// The site is in it, because a BladeRunner numbered 1 exists at every site and
+// two blades with one address is a fault that takes a day to find.
+func bladeMAC(siteID, rackIdx int64, slot int) string {
+	return fmt.Sprintf("02:b1:ad:%02x:%02x:%02x", siteID&0xff, rackIdx&0xff, slot&0xff)
 }
 
-func bladeHostname(rackIdx int64, slot int) string {
+// bladeHostname is what a blade is called when nobody named it. The prefix
+// belongs to the site: BladeRunner 1 exists at every site, so without it the
+// first blade of the first unit is called blade-r1s01 in each of them — one
+// name, two machines, and every tool that resolves names picks one at random.
+//
+// An empty prefix keeps the name a single-site installation has always had,
+// which is why it is the default and why the interface says so when two sites
+// would collide.
+func bladeHostname(prefix string, rackIdx int64, slot int) string {
+	if prefix != "" {
+		return fmt.Sprintf("blade-%s-r%ds%02d", prefix, rackIdx, slot)
+	}
 	return fmt.Sprintf("blade-r%ds%02d", rackIdx, slot)
 }
 
@@ -170,11 +184,11 @@ func (a *App) placeBlade(serial string, rackID *int64, slot *int) error {
 	idx := int64(a.rackIndex(*rk))
 	host := cur.Hostname
 	if host == "" || autoHostRe.MatchString(host) {
-		host = bladeHostname(idx, *slot)
+		host = bladeHostname(a.hostPrefix(rk.SiteID), idx, *slot)
 	}
 	mac := cur.MAC
 	if mac == "" || strings.HasPrefix(strings.ToLower(mac), autoMACPrefix) {
-		mac = bladeMAC(idx, *slot)
+		mac = bladeMAC(rk.SiteID, idx, *slot)
 	}
 	state := cur.State
 	if state == "new" {
@@ -197,7 +211,7 @@ func (a *App) placeBlade(serial string, rackID *int64, slot *int) error {
 // autoHostRe recognises names Sheath generated itself. autoMACPrefix is the
 // locally administered range we hand out — a vendor MAC reported by a blade
 // never starts like that.
-var autoHostRe = regexp.MustCompile(`^blade-r\d+s\d{2}$`)
+var autoHostRe = regexp.MustCompile(`^blade-([a-z0-9]{1,8}-)?r\d+s\d{2}$`)
 
 const autoMACPrefix = "02:b1:ad:"
 
@@ -278,11 +292,11 @@ func (a *App) syncDHCP() (*syncResult, error) {
 		}
 		mac := b.MAC
 		if mac == "" {
-			mac = bladeMAC(int64(b.RackIdx), *b.Slot)
+			mac = bladeMAC(b.SiteID, int64(b.RackIdx), *b.Slot)
 		}
 		host := b.Hostname
 		if host == "" {
-			host = bladeHostname(int64(b.RackIdx), *b.Slot)
+			host = bladeHostname(a.hostPrefix(b.SiteID), int64(b.RackIdx), *b.Slot)
 		}
 		name := "blade-" + b.Serial + ".conf"
 		want[name] = true
@@ -511,6 +525,29 @@ func (a *App) checkNet(l Lang) []string {
 	for _, st := range sites {
 		warn = append(warn, a.checkSite(l, st, racksAll)...)
 	}
+	return append(warn, a.checkNames(l)...)
+}
+
+// checkNames looks for one name meaning two machines. It can happen the moment
+// a second site exists: BladeRunner 1 is numbered 1 at every site, so the
+// first blade of the first unit is blade-r1s01 in each of them until the sites
+// are given name prefixes. DNS resolves such a name to whichever answers
+// first, which is not a thing anyone should be debugging at the rack.
+func (a *App) checkNames(l Lang) []string {
+	rows, err := a.db.Query(`SELECT hostname, COUNT(*) FROM blades
+		WHERE hostname<>'' GROUP BY hostname HAVING COUNT(*) > 1 ORDER BY hostname`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var warn []string
+	for rows.Next() {
+		var name string
+		var n int
+		if err := rows.Scan(&name, &n); err == nil {
+			warn = append(warn, T(l, "warn.dupehost", name, n))
+		}
+	}
 	return warn
 }
 
@@ -552,4 +589,14 @@ func (a *App) checkSite(l Lang, st Site, racksAll []Rack) []string {
 		}
 	}
 	return warn
+}
+
+// hostPrefix is the site's own piece of a generated blade name, memoised for
+// the duration of one request like the other site lookups.
+func (a *App) hostPrefix(siteID int64) string {
+	st, err := a.getSite(siteID)
+	if err != nil {
+		return ""
+	}
+	return st.HostPrefix
 }

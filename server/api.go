@@ -224,11 +224,11 @@ func (a *App) siteDesired(id int64) (*SiteDesired, error) {
 		}
 		mac := b.MAC
 		if mac == "" {
-			mac = bladeMAC(int64(b.RackIdx), *b.Slot)
+			mac = bladeMAC(b.SiteID, int64(b.RackIdx), *b.Slot)
 		}
 		host := b.Hostname
 		if host == "" {
-			host = bladeHostname(int64(b.RackIdx), *b.Slot)
+			host = bladeHostname(a.hostPrefix(b.SiteID), int64(b.RackIdx), *b.Slot)
 		}
 		cfg, ver := a.mergedConfig(&b)
 		var tok string
@@ -644,10 +644,10 @@ func (a *App) hBladeUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var idx int64
+	var idx, siteOf int64
 	if rackID != nil {
 		if rk, err := a.getRack(*rackID); err == nil {
-			idx = int64(a.rackIndex(*rk))
+			idx, siteOf = int64(a.rackIndex(*rk)), rk.SiteID
 		}
 	}
 	host := cur.Hostname
@@ -655,14 +655,14 @@ func (a *App) hBladeUpdate(w http.ResponseWriter, r *http.Request) {
 		host = *in.Hostname
 	}
 	if host == "" && rackID != nil && slot != nil {
-		host = bladeHostname(idx, *slot)
+		host = bladeHostname(a.hostPrefix(siteOf), idx, *slot)
 	}
 	mac := cur.MAC
 	if in.MAC != nil {
 		mac = *in.MAC
 	}
 	if mac == "" && rackID != nil && slot != nil {
-		mac = bladeMAC(idx, *slot)
+		mac = bladeMAC(siteOf, idx, *slot)
 	}
 	img := cur.Image
 	if in.Image != nil {

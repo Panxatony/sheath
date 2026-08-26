@@ -199,7 +199,7 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 			rv.Slots = append(rv.Slots, slotView{
 				Slot: s, Empty: true, LED: "off",
 				IP:  a.bladeIP(rk, s),
-				MAC: bladeMAC(idx, s),
+				MAC: bladeMAC(rk.SiteID, idx, s),
 			})
 			continue
 		}
@@ -500,7 +500,7 @@ func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup 
 	}
 	byID := map[int64]*siteGroup{}
 	out := make([]siteGroup, 0, len(sites))
-	centre := a.payload().SHA256
+	centre := a.payload()
 	for _, st := range sites {
 		key, led, seen := siteHealth(l, st)
 		sk, skLED := stockText(l, stock[st.ID])
@@ -586,6 +586,7 @@ func (a *App) hUISiteUpdate(w http.ResponseWriter, r *http.Request) {
 	st.Name = strings.TrimSpace(r.FormValue("name"))
 	st.Location = strings.TrimSpace(r.FormValue("location"))
 	st.NetBase = strings.TrimSpace(r.FormValue("net_base"))
+	st.HostPrefix = strings.ToLower(strings.TrimSpace(r.FormValue("host_prefix")))
 	if v, err := strconv.Atoi(r.FormValue("pool_from")); err == nil {
 		st.PoolFrom = v
 	}
@@ -2668,16 +2669,17 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 	key, led, seenAt := siteHealth(l, *st)
 	code, left := a.enrollState(*st)
 	centre := a.payload()
-	payKey, payLED := payloadState(centre.SHA256, st.Payload)
+	payKey, payLED := payloadState(centre, st.Payload)
 	msg, errMsg := flash(r)
 	render(w, siteTmpl, map[string]any{
+		"Example":   bladeHostname(st.HostPrefix, 1, 1),
 		"Code":      code,
 		"CodeLeft":  fmt.Sprintf(T(l, "enr.valid"), humanDur(l, left)),
 		"EnrollCmd": enrollCommand(a.baseURL, code),
 		"Pay":       T(l, payKey),
 		"PayLED":    payLED,
 		"PayHere":   shortOr(st.Payload),
-		"PayCentre": shortOr(centre.SHA256),
+		"PayCentre": shortOr(centre.Version),
 		"SiteVer":   st.SiteVersion,
 		"L":         l,
 		"Path":      "/sites/" + strconv.FormatInt(id, 10),
@@ -2862,10 +2864,14 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
           <input id="pf" type="number" name="pool_from" value="{{.S.PoolFrom}}" min="1" max="254"></div>
         <div class="narrow"><label for="pt">{{t .L "site.poolto"}}</label>
           <input id="pt" type="number" name="pool_to" value="{{.S.PoolTo}}" min="1" max="254"></div>
+        <div class="narrow"><label for="hp">{{t .L "site.prefix"}}</label>
+          <input id="hp" type="text" name="host_prefix" value="{{.S.HostPrefix}}"
+                 maxlength="8" pattern="[a-z0-9]*" placeholder="{{t .L "site.prefixph"}}"></div>
         <div class="narrow"><button type="submit">{{t .L "form.save"}}</button></div>
       </div>
     </form>
     <p class="hint" style="margin:.9rem 0 0">{{t .L "site.movehint"}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "site.prefixhint" .Example}}</p>
   </div>
 </div>
 

@@ -174,6 +174,7 @@ var migrations = []string{
 	`ALTER TABLE images ADD COLUMN state TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN payload TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN enroll_code TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN host_prefix TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN enroll_until TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
@@ -221,6 +222,10 @@ type Site struct {
 	// serialised outwards for the same reason the token is not.
 	EnrollCode  string `json:"-"`
 	EnrollUntil string `json:"-"`
+
+	// What goes into the names of blades here: blade-<prefix>-r1s01. Empty
+	// keeps the name a single-site installation has always had.
+	HostPrefix string `json:"host_prefix"`
 }
 
 type Rack struct {
@@ -923,7 +928,7 @@ func (a *App) listImages() ([]Image, error) {
 
 const siteCols = `id,name,location,net_base,gateway,dns,domain,
 	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created,
-	payload,site_version,enroll_code,enroll_until`
+	payload,site_version,enroll_code,enroll_until,host_prefix`
 
 func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	var st Site
@@ -931,7 +936,7 @@ func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	err := sc.Scan(&st.ID, &st.Name, &st.Location, &st.NetBase, &st.Gateway, &st.DNS,
 		&st.Domain, &st.PoolFrom, &st.PoolTo, &st.OffsetBase, &st.OffsetStep,
 		&local, &st.Token, &st.LastSeen, &st.Created, &st.Payload, &st.SiteVersion,
-		&st.EnrollCode, &st.EnrollUntil)
+		&st.EnrollCode, &st.EnrollUntil, &st.HostPrefix)
 	if err != nil {
 		return nil, err
 	}

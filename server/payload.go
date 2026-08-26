@@ -171,13 +171,21 @@ func sha256File(path string) (string, error) {
 
 // payloadState says how a site's payload compares with this one, in a word
 // the interface can colour.
-func payloadState(centre, site string) (key, led string) {
+//
+// Two values count as agreement, because there are two vintages of site. A
+// current one reports the version of the whole set; one from before the
+// firmware files were published reports the checksum of boot.img alone. Both
+// mean "what the centre has", and a mismatch here is read as a real
+// difference, so it had better be one: when the payload grew from one file to
+// the set, the centre went on comparing against boot.img's checksum and every
+// site on earth looked wrong.
+func payloadState(centre payloadInfo, site string) (key, led string) {
 	switch {
 	case site == "":
 		return "pay.unknown", ""
-	case centre == "":
+	case centre.Version == "":
 		return "pay.nocentre", "warn"
-	case site == centre:
+	case site == centre.Version || site == centre.SHA256:
 		return "pay.same", "ok"
 	}
 	return "pay.differs", "warn"
