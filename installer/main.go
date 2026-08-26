@@ -46,7 +46,7 @@ const (
 // ── Server responses ─────────────────────────────────────────────────
 
 type provisionResp struct {
-	Status     string   `json:"status"` // "waiting" | "go"
+	Status     string   `json:"status"` // "waiting" | "idle" | "go" | "wipe"
 	Serial     string   `json:"serial"`
 	Image      string   `json:"image"`
 	URL        string   `json:"url"`
@@ -151,6 +151,14 @@ func run() error {
 	if target == "" {
 		target = defaultTarget
 	}
+
+	// A wipe is not an installation with an empty image: nothing is
+	// downloaded, nothing is written, and the blade is meant to be pulled
+	// out afterwards rather than started.
+	if job.Status == "wipe" {
+		return c.runWipe(job, target)
+	}
+
 	logf("")
 	logf("Image    %s", job.Image)
 	logf("Source   %s", job.URL)
@@ -217,6 +225,37 @@ func run() error {
 		reboot()
 	}
 	return nil
+}
+
+// runWipe erases the disk and leaves the blade standing, so it can be taken
+// out of its slot and put somewhere else. It deliberately does not reboot:
+// restarting into a freshly emptied disk means netbooting again, and a blade
+// waiting quietly is easier to pull than one in a boot loop.
+func (c *client) runWipe(job *provisionResp, target string) error {
+	logf("")
+	logf("╔══════════════════════════════════════════════════════════")
+	logf("║ ERASING %s", target)
+	logf("╚══════════════════════════════════════════════════════════")
+	logf("")
+	if err := checkTarget(target); err != nil {
+		c.report("error", 0, err.Error())
+		return err
+	}
+	if err := c.wipeDisk(target); err != nil {
+		c.report("error", 0, err.Error())
+		return err
+	}
+	rereadPartitions(target)
+
+	c.report("wiped", 100, "")
+	logf("")
+	logf("The NVMe is empty. This blade can be pulled and put in")
+	logf("another BladeRunner — Rookery has taken it out of its slot.")
+	logf("")
+	logf("Nothing else will happen here.")
+	for {
+		time.Sleep(time.Hour)
+	}
 }
 
 // idleErr stands for "the server has nothing to do". That is not a defect

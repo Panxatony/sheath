@@ -705,17 +705,25 @@ func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Replace pending commands of the same kind instead of stacking them:
-	// queueing "reboot" three times must not reboot three times.
-	_, _ = a.db.Exec(`UPDATE commands SET taken=? WHERE serial=? AND kind=? AND taken=''`,
-		now()+" (ersetzt)", serial, kind)
-	if _, err := a.db.Exec(`INSERT INTO commands(serial,kind,created) VALUES(?,?,?)`,
-		serial, kind, now()); err != nil {
+	if err := a.queueCommand(serial, kind); err != nil {
 		fail(w, 500, "%v", err)
 		return
 	}
-	a.logEvent(serial, "info", "command queued: "+kind)
 	writeJSON(w, 202, map[string]string{"queued": kind, "serial": serial})
+}
+
+// queueCommand puts one command in the queue, replacing a pending one of the
+// same kind rather than stacking it: asking for "reboot" three times must not
+// reboot three times.
+func (a *App) queueCommand(serial, kind string) error {
+	_, _ = a.db.Exec(`UPDATE commands SET taken=? WHERE serial=? AND kind=? AND taken=''`,
+		now()+" (replaced)", serial, kind)
+	if _, err := a.db.Exec(`INSERT INTO commands(serial,kind,created) VALUES(?,?,?)`,
+		serial, kind, now()); err != nil {
+		return err
+	}
+	a.logEvent(serial, "info", "command queued: "+kind)
+	return nil
 }
 
 // ── Agent endpoints ──────────────────────────────────────────────────
@@ -948,6 +956,24 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 	// BOOT_ORDER puts the network ahead of the NVMe would reinstall itself on
 	// every start — and an accidental netboot would overwrite a running
 	// system.
+	// An erase is armed like an installation but answers differently: no
+	// image, no download, and the blade stays put afterwards.
+	if b.InstallState == installWipe {
+		var wtok string
+		_ = a.db.QueryRow(`SELECT token FROM blades WHERE serial=?`, serial).Scan(&wtok)
+		a.logEvent(serial, "warn", "erase job handed out")
+		_, _ = a.db.Exec(`UPDATE blades SET state='provisioning' WHERE serial=?`, serial)
+		writeJSON(w, 200, map[string]any{
+			"status":     "wipe",
+			"serial":     serial,
+			"target":     a.installTarget(b),
+			"server_url": a.baseURL,
+			"token":      wtok,
+			"message":    "erasing the disk, then this blade stops",
+		})
+		return
+	}
+
 	if b.InstallState != installPending {
 		writeJSON(w, 200, map[string]any{
 			"status":      "idle",
@@ -1103,6 +1129,18 @@ func (a *App) hProvisionStatus(w http.ResponseWriter, r *http.Request) {
 		// booting from a half-written disk.
 		_, _ = a.db.Exec(`UPDATE blades SET state='error' WHERE serial=?`, serial)
 		a.netbootStage(serial, stageError, in.Error)
+	} else if in.Phase == "wiped" {
+		// The disk is empty; only now does the blade leave its slot. Doing it
+		// at the click would have made a half-erased blade disappear from the
+		// interface, which is the worst moment to lose sight of one.
+		hostname := b0Hostname(a, serial)
+		if err := a.finishWipe(serial); err != nil {
+			a.logEvent(serial, "error", "slot not cleared after erase: "+err.Error())
+		} else {
+			a.logEvent(serial, "warn", "NVMe erased — "+hostname+" taken out of its slot")
+		}
+		_, _ = a.syncDHCP()
+		a.netbootStage(serial, stageDone, "erased")
 	} else if in.Phase == "done" {
 		// The intent is spent: the next netboot triggers nothing.
 		_, _ = a.db.Exec(`UPDATE blades SET state='enrolled',install_state=?,installed_at=?
@@ -1121,6 +1159,17 @@ func (a *App) hProvisionStatus(w http.ResponseWriter, r *http.Request) {
 		a.logEvent(serial, lvl, msg)
 	}
 	writeJSON(w, 200, map[string]string{"ok": "1"})
+}
+
+// b0Hostname reads a blade's name before it loses it, so the log can say
+// which blade was erased rather than only which serial number.
+func b0Hostname(a *App, serial string) string {
+	var h string
+	_ = a.db.QueryRow(`SELECT hostname FROM blades WHERE serial=?`, serial).Scan(&h)
+	if h == "" {
+		return serial
+	}
+	return h
 }
 
 // worthLogging keeps the first report of a phase and then every 25 %. It

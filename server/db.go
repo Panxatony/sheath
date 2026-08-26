@@ -169,6 +169,10 @@ const (
 	installPending = "pending" // write on the next netboot
 	installDone    = "done"    // written
 	installError   = "error"
+	// installWipe: the next netboot erases this blade's disk instead of
+	// writing to it. Deliberately a state and not a command — a command the
+	// agent carries out would have to erase the disk it is running from.
+	installWipe = "wipe"
 )
 
 type Site struct {
@@ -797,6 +801,32 @@ func (a *App) countBladesInRack(rackID int64) int {
 	var n int
 	_ = a.db.QueryRow(`SELECT COUNT(*) FROM blades WHERE rack_id=?`, rackID).Scan(&n)
 	return n
+}
+
+// requestWipe arms the erase. The slot is NOT cleared here: a blade whose
+// disk is half erased must not vanish from the interface, because then nobody
+// knows what state it is in. The slot is freed when the installer says the
+// disk is empty.
+func (a *App) requestWipe(serial string) error {
+	res, err := a.db.Exec(
+		`UPDATE blades SET install_state=? WHERE serial=?`, installWipe, serial)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return me("err.bladegone")
+	}
+	return nil
+}
+
+// finishWipe takes the blade out of its slot once the disk is empty. It keeps
+// the record: the serial number is the same piece of hardware, and its
+// history is worth more than a tidy table.
+func (a *App) finishWipe(serial string) error {
+	_, err := a.db.Exec(`UPDATE blades SET rack_id=NULL, slot=NULL, image='',
+		install_state=?, state='new', hostname='', config_applied='',
+		facts_json='{}', health_json='{}' WHERE serial=?`, installIdle, serial)
+	return err
 }
 
 // requestInstall records that this blade should be written on its next

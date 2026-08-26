@@ -26,10 +26,19 @@ import (
 
 func collectFacts() map[string]any {
 	rel := parseKV("/etc/os-release")
+	osID, osName, osVer := rel["ID"], rel["PRETTY_NAME"], rel["VERSION_ID"]
+	// DietPi is Debian underneath and says so in /etc/os-release, which is
+	// true and useless: what someone chose in the catalogue was DietPi, and
+	// what runs on the blade should be called by that name. Its own version
+	// lives in a file of its own.
+	if id, name, ver, ok := dietPi(); ok {
+		osID, osName, osVer = id, name, ver
+	}
 	f := map[string]any{
-		"os_id":         rel["ID"],
-		"os_version_id": rel["VERSION_ID"],
-		"os_name":       rel["PRETTY_NAME"],
+		"os_id":         osID,
+		"os_version_id": osVer,
+		"os_name":       osName,
+		"os_base":       rel["PRETTY_NAME"],
 		"os_family":     family(rel),
 		"init":          initSystem(),
 		"pkg_mgr":       packageManager(),
@@ -46,6 +55,27 @@ func collectFacts() map[string]any {
 		"reboot_required": rebootRequired(),
 	}
 	return f
+}
+
+// dietPi recognises DietPi and reads the version it keeps for itself.
+// /etc/os-release stays what Debian put there; this is the layer above it.
+func dietPi() (id, name, version string, ok bool) {
+	v := parseKV("/boot/dietpi/.version")
+	if len(v) == 0 {
+		v = parseKV("/var/lib/dietpi/.version")
+	}
+	core := v["G_DIETPI_VERSION_CORE"]
+	if core == "" {
+		return "", "", "", false
+	}
+	version = core
+	if sub := v["G_DIETPI_VERSION_SUB"]; sub != "" {
+		version += "." + sub
+	}
+	if rc := v["G_DIETPI_VERSION_RC"]; rc != "" {
+		version += "." + rc
+	}
+	return "dietpi", "DietPi " + version, version, true
 }
 
 // family groups the distributions that are operated the same way. DietPi

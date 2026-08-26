@@ -347,6 +347,21 @@ var catalog = map[string]map[Lang]string{
 	"msg.siteremoved":   {LangEN: "Site removed.", LangDE: "Standort entfernt."},
 	"msg.dhcprewritten": {LangEN: "%d reservations rewritten", LangDE: "%d Reservierungen neu geschrieben"},
 
+	"act.wipe":   {LangEN: "Erase NVMe — type the name", LangDE: "NVMe löschen — Namen eintippen"},
+	"act.wipego": {LangEN: "Erase and remove", LangDE: "Löschen und entfernen"},
+	"act.wipehint": {
+		LangEN: "The blade netboots once more, the disk is erased there, and it leaves its slot only when that is done. It then stops, ready to be pulled.",
+		LangDE: "Das Blade netbootet noch einmal, dort wird die Platte gelöscht, und es verlässt seinen Slot erst, wenn das erledigt ist. Danach hält es an und kann gezogen werden."},
+	"err.wipeoff": {
+		LangEN: "erasing is switched off at this site",
+		LangDE: "Löschen ist an diesem Standort abgeschaltet"},
+	"err.wipeconfirm": {
+		LangEN: "type %q to confirm the erase",
+		LangDE: "Zum Bestätigen %q eintippen"},
+	"msg.wipearmed": {
+		LangEN: "%s will erase its NVMe at the next netboot — it is restarting now.",
+		LangDE: "%s löscht seine NVMe beim nächsten Netzboot — es startet gerade neu."},
+
 	"act.identifyoff":    {LangEN: "Stop identify", LangDE: "Identify beenden"},
 	"act.identifyofftip": {LangEN: "ends the identify state, as the blade's own button would", LangDE: "beendet den Identify-Zustand, wie es der Knopf am Blade täte"},
 	"act.stealthon":      {LangEN: "Stealth on", LangDE: "Stealth an"},

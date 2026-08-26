@@ -6,6 +6,28 @@ on `main`.
 ## Unreleased
 
 ### Added
+- Erasing a blade's NVMe from the interface, so it can be pulled and put in
+  another BladeRunner. The work happens in the netboot mini OS, not in the
+  agent: the agent runs from the disk it would have to erase, and a root
+  filesystem cannot be unmounted out from under itself. A discard over the
+  whole device where the drive accepts one, and the first and last 64 MB
+  overwritten either way — that is what actually removes the partition table,
+  the boot sector and the backup GPT. The blade leaves its slot only when the
+  disk is reported empty, and then stops rather than rebooting, so it can be
+  pulled. Two guards: the site may forbid it (`no_wipe`), and whoever asks has
+  to type the blade's name.
+- DietPi is reported as DietPi with its own version rather than as the Debian
+  it is built on; the base name is kept as `os_base`.
+
+### Fixed
+- The agent survives DietPi: no dbus there, so `hostnamectl` fails and the
+  hostname is written directly; and units can carry `per_os` names, because
+  OpenSSH is `ssh` on Debian and Ubuntu while DietPi runs Dropbear.
+- A partially failed configuration pass skipped the self-restart, so a blade
+  whose hostname could not be set sat forever on an unapplied firmware
+  setting.
+
+### Added
 - An `agent` section in the desired state, layered global → group → blade like
   everything else: `interval` and `jitter` (so a rack does not ask in lockstep
   after a power cut), `allow` (which commands this blade accepts at all — for

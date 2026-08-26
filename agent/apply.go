@@ -137,28 +137,26 @@ func applyConfig(cfg map[string]any) ([]string, error) {
 // ── Hostname ─────────────────────────────────────────────────────────
 
 func setHostname(want string) (bool, error) {
-	cur, _ := os.Hostname()
-	if cur == want {
+	current, _ := os.Hostname()
+	if current == want {
+		ensureHostsEntry(want)
 		return false, nil
 	}
-	// hostnamectl handles /etc/hostname, the running kernel and telling
-	// systemd, all in one go.
-	if _, err := exec.LookPath("hostnamectl"); err == nil {
-		if out, err := exec.Command("hostnamectl", "set-hostname", want).CombinedOutput(); err != nil {
-			return false, fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+	// hostnamectl where there is a system bus, the plain way where there is
+	// not: DietPi ships without dbus, and "Failed to connect to bus" is not a
+	// reason to leave a blade nameless.
+	if out, err := exec.Command("hostnamectl", "set-hostname", want).CombinedOutput(); err != nil {
+		if werr := os.WriteFile("/etc/hostname", []byte(want+"\n"), 0o644); werr != nil {
+			return false, fmt.Errorf("%v: %s", err, lastLines(string(out), 1))
 		}
-	} else {
-		if err := os.WriteFile("/etc/hostname", []byte(want+"\n"), 0o644); err != nil {
-			return false, err
+		if out2, err2 := exec.Command("hostname", want).CombinedOutput(); err2 != nil {
+			return false, fmt.Errorf("%v: %s", err2, lastLines(string(out2), 1))
 		}
-		_ = exec.Command("hostname", want).Run()
 	}
 	ensureHostsEntry(want)
 	return true, nil
 }
 
-// ensureHostsEntry keeps 127.0.1.1 current. Without it, sudo and some
-// services run into DNS timeouts.
 func ensureHostsEntry(host string) {
 	const path = "/etc/hosts"
 	b, err := os.ReadFile(path)
@@ -678,6 +676,16 @@ func unitList(v any) []unitSpec {
 			out = append(out, unitSpec{Name: t, Enabled: true})
 		case map[string]any:
 			n, _ := t["name"].(string)
+			// The same service is not called the same everywhere: OpenSSH is
+			// "ssh" on Debian and Ubuntu, and DietPi runs Dropbear instead.
+			// per_os says which name to use here, and an empty name means
+			// "this distribution does not have it" rather than an error.
+			if per, ok := t["per_os"].(map[string]any); ok {
+				osID := parseKV("/etc/os-release")["ID"]
+				if v, found := per[osID]; found {
+					n, _ = v.(string)
+				}
+			}
 			if n == "" {
 				continue
 			}

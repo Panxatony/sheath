@@ -23,6 +23,12 @@ type Policy struct {
 	DiskCrit   float64 `json:"disk_crit_pct"`
 	OfflineMin int     `json:"offline_after_min"`
 
+	// NoWipe forbids erasing a blade's disk from the interface at this site.
+	// Deliberately phrased as a prohibition: the default is that an operator
+	// may erase a blade they can already reinstall, and a site that wants the
+	// stronger rule says so.
+	NoWipe bool `json:"no_wipe,omitempty"`
+
 	// Global only: these are properties of the central server's bookkeeping,
 	// not of a place.
 	CommandTTLMin  int `json:"command_ttl_min,omitempty"`
@@ -64,6 +70,9 @@ func (p Policy) fill(from Policy) Policy {
 	}
 	if p.OfflineMin == 0 {
 		p.OfflineMin = from.OfflineMin
+	}
+	if !p.NoWipe {
+		p.NoWipe = from.NoWipe
 	}
 	if p.CommandTTLMin == 0 {
 		p.CommandTTLMin = from.CommandTTLMin

@@ -325,6 +325,10 @@ func (a *agent) syncConfig() error {
 		}
 		a.pending = append(a.pending, changes...)
 		a.pending = append(a.pending, "FAILED: "+err.Error())
+		// A boot configuration that did land still deserves its restart. The
+		// first version of this returned here, and a blade whose hostname
+		// could not be set sat forever with an unapplied firmware setting.
+		a.maybeRestart()
 		return err
 	}
 	if len(changes) == 0 {

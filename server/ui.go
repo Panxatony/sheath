@@ -638,6 +638,7 @@ func (a *App) hRackPage(w http.ResponseWriter, r *http.Request) {
 		"Msg":       msg,
 		"Err":       errMsg,
 		"Sites":     a.siteChoices(),
+		"CanWipe":   !a.sitePolicy(rk.SiteID).NoWipe,
 		"Log":       buildLog(events, l),
 		"CanDelete": rv.Used == 0,
 		"Open":      a.adminToken == "",
@@ -1059,6 +1060,10 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	to := bladePage(b, r)
+	if kind == "wipe" {
+		a.hUIBladeWipe(w, r)
+		return
+	}
 	switch kind {
 	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage":
 	default:
@@ -2000,6 +2005,16 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   <div class="menu-note">{{t $top.L "hw.window" .SparkNum}}</div>
                 </div>
                 {{end}}
+                {{if $top.CanWipe}}
+                <div class="menu-sep"></div>
+                <form class="stack" method="post" action="/blades/{{.Serial}}/actions/wipe">
+                  <label>{{t $top.L "act.wipe"}}</label>
+                  <input type="text" name="confirm" placeholder="{{.Hostname}}"
+                         autocomplete="off" spellcheck="false">
+                  <button class="mini danger" type="submit">{{t $top.L "act.wipego"}}</button>
+                </form>
+                <div class="menu-note">{{t $top.L "act.wipehint"}}</div>
+                {{end}}
                 <div class="menu-note">{{t $top.L "th.install"}}: {{.Install}} · {{t $top.L "th.mac"}} {{.MAC}}</div>
               </div>
             </details>
@@ -2387,6 +2402,48 @@ func imageNote(l Lang, im Image) (string, string) {
 		return T(l, "img.downstream"), "ok"
 	}
 	return T(l, "img.unknownkernel"), "off"
+}
+
+// hUIBladeWipe arms the erase. Two guards, because this is the one action
+// that destroys something a reinstall cannot bring back: the site may forbid
+// it outright, and whoever asks has to type the blade's name — a slip of the
+// mouse in a list of twenty rows should not empty a disk.
+func (a *App) hUIBladeWipe(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	serial := r.PathValue("serial")
+	b, err := a.getBlade(serial)
+	if err != nil {
+		redirectMsg(w, r, backTo(r, "/"), "err", T(l, "err.bladegone"))
+		return
+	}
+	to := bladePage(b, r)
+	if a.sitePolicy(b.SiteID).NoWipe {
+		redirectMsg(w, r, to, "err", T(l, "err.wipeoff"))
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, to, "err", T(l, "err.form"))
+		return
+	}
+	if strings.TrimSpace(r.FormValue("confirm")) != b.Hostname {
+		redirectMsg(w, r, to, "err", T(l, "err.wipeconfirm", b.Hostname))
+		return
+	}
+	if err := a.requestWipe(serial); err != nil {
+		redirectMsg(w, r, to, "err", errText(l, err))
+		return
+	}
+	// Netboot has to be armed for this, and the blade has to get there: the
+	// agent reboots it, so nobody has to walk to the rack.
+	if _, err := a.syncDHCP(); err != nil {
+		redirectMsg(w, r, to, "err", T(l, "err.dhcpsync", errText(l, err)))
+		return
+	}
+	if err := a.queueCommand(serial, "reboot"); err != nil {
+		a.logEvent(serial, "warn", "erase armed, but no reboot could be queued: "+err.Error())
+	}
+	a.logEvent(serial, "warn", "erase requested for "+b.Hostname)
+	redirectMsg(w, r, to, "msg", T(l, "msg.wipearmed", b.Hostname))
 }
 
 // ── Site detail ──────────────────────────────────────────────────────

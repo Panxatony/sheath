@@ -307,8 +307,11 @@ func (a *App) syncDHCP() (*syncResult, error) {
 		// hardware or the EEPROM. Unknown blades get netboot via tag:!known
 		// regardless.
 		tag, why := "", "boots from the NVMe"
-		if b.InstallState == installPending {
+		switch b.InstallState {
+		case installPending:
 			tag, why = "set:bootnet,", "install requested – boots over the network"
+		case installWipe:
+			tag, why = "set:bootnet,", "erase requested – boots over the network"
 		}
 		body := fmt.Sprintf(
 			"# Rookery – generated, do not edit by hand\n"+
