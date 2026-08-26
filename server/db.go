@@ -588,10 +588,13 @@ func (a *App) updateSite(id int64, st Site) error {
 	if st.PoolFrom <= 0 || st.PoolTo <= st.PoolFrom || st.PoolTo > 254 {
 		return me("err.sitepool")
 	}
+	if !validHostPrefix(st.HostPrefix) {
+		return me("err.siteprefix")
+	}
 	_, err := a.db.Exec(`UPDATE sites SET name=?,location=?,net_base=?,gateway=?,
-		dns=?,domain=?,pool_from=?,pool_to=? WHERE id=?`,
+		dns=?,domain=?,pool_from=?,pool_to=?,host_prefix=? WHERE id=?`,
 		st.Name, st.Location, st.NetBase, st.Gateway, st.DNS, st.Domain,
-		st.PoolFrom, st.PoolTo, id)
+		st.PoolFrom, st.PoolTo, st.HostPrefix, id)
 	if err == nil {
 		a.invalidateNetCache()
 	}

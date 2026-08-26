@@ -525,7 +525,7 @@ func (a *App) checkNet(l Lang) []string {
 	for _, st := range sites {
 		warn = append(warn, a.checkSite(l, st, racksAll)...)
 	}
-	return append(warn, a.checkNames(l)...)
+	return warn
 }
 
 // checkNames looks for one name meaning two machines. It can happen the moment
@@ -600,3 +600,45 @@ func (a *App) hostPrefix(siteID int64) string {
 	}
 	return st.HostPrefix
 }
+
+// renameSiteBlades re-derives the generated names in one site. Changing a
+// site's prefix has to reach the blades standing in it, or the setting is a
+// note in a form: the reservation, the DNS entry and the name the agent sets
+// on the machine all come from here.
+//
+// Names somebody typed are left alone. That is the whole point of recognising
+// our own: a blade called "buildbox" was called that on purpose.
+func (a *App) renameSiteBlades(siteID int64) (int, error) {
+	blades, err := a.listBlades()
+	if err != nil {
+		return 0, err
+	}
+	prefix := a.hostPrefix(siteID)
+	changed := 0
+	for i := range blades {
+		b := &blades[i]
+		if b.SiteID != siteID || b.RackID == nil || b.Slot == nil {
+			continue
+		}
+		if b.Hostname != "" && !autoHostRe.MatchString(b.Hostname) {
+			continue
+		}
+		want := bladeHostname(prefix, int64(b.RackIdx), *b.Slot)
+		if want == b.Hostname {
+			continue
+		}
+		if _, err := a.db.Exec(`UPDATE blades SET hostname=? WHERE serial=?`,
+			want, b.Serial); err != nil {
+			continue
+		}
+		a.logEvent(b.Serial, "info", "renamed "+b.Hostname+" → "+want)
+		changed++
+	}
+	return changed, nil
+}
+
+// validHostPrefix keeps a site's prefix to what a hostname may contain and
+// short enough that the name it produces still reads as a name.
+var hostPrefixRe = regexp.MustCompile(`^[a-z0-9]{0,8}$`)
+
+func validHostPrefix(p string) bool { return hostPrefixRe.MatchString(p) }

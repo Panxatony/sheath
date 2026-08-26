@@ -376,6 +376,7 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 		"PoolFrom":   poolFrom,
 		"PoolTo":     poolTo,
 		"Warnings":   a.checkNet(l),
+		"NameWarns":  a.checkNames(l),
 		"Msg":        msg,
 		"Err":        errMsg,
 		"NextFrom":   a.netBase() + "." + itoa(nextOff+1),
@@ -597,10 +598,19 @@ func (a *App) hUISiteUpdate(w http.ResponseWriter, r *http.Request) {
 		redirectMsg(w, r, "/", "err", errText(l, err))
 		return
 	}
+	renamed := 0
+	if st.HostPrefix != old.HostPrefix {
+		renamed, _ = a.renameSiteBlades(id)
+	}
 	// Addresses are derived from the site, so a moved network moves every
 	// blade standing in it — the reservations must be rewritten at once.
 	note := T(l, "msg.sitesaved", st.Name)
-	if old.NetBase != st.NetBase {
+	if renamed > 0 {
+		note += " — " + fmt.Sprintf(T(l, "msg.renamed"), renamed)
+	}
+	// A rename has to reach the reservations as surely as a moved network
+	// does: the name is in the file dnsmasq hands out.
+	if old.NetBase != st.NetBase || renamed > 0 {
 		if res, serr := a.syncDHCP(); serr != nil {
 			note += " — " + errText(l, serr)
 		} else {
@@ -1763,6 +1773,7 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
 {{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
 {{range .Warnings}}<div class="bad"><b>{{t $.L "warn.net"}}:</b> {{.}}</div>{{end}}
+{{range .NameWarns}}<div class="bad"><b>{{t $.L "warn.names"}}:</b> {{.}}</div>{{end}}
 
 {{$l := .L}}
 {{if .Racks}}

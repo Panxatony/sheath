@@ -293,6 +293,17 @@ var catalog = map[string]map[Lang]string{
 	"enr.lead":  {LangEN: "A code the site signs itself in with, instead of a token carried there by hand. Good once, good for an hour.", LangDE: "Ein Code, mit dem sich der Standort selbst anmeldet, statt ein Token von Hand hinzutragen. Einmal gültig, eine Stunde lang."},
 	"enr.made":  {LangEN: "Code created — it is shown once", LangDE: "Code erzeugt — er wird einmal angezeigt"},
 
+	"site.prefix":   {LangEN: "Name prefix", LangDE: "Namenskürzel"},
+	"site.prefixph": {LangEN: "none", LangDE: "keins"},
+	"site.prefixhint": {
+		LangEN: "Blades here are called %s. A BladeRunner numbered 1 exists at every site, so without a prefix the first blade of the first unit has the same name in each of them — one name for two machines, and every tool that resolves names picks one of them.",
+		LangDE: "Blades hier heißen %s. Einen BladeRunner Nummer 1 gibt es an jedem Standort, also trägt ohne Kürzel das erste Blade der ersten Einheit überall denselben Namen — ein Name für zwei Maschinen, und jedes Werkzeug, das Namen auflöst, greift sich eine davon."},
+	"warn.names":  {LangEN: "Names", LangDE: "Namen"},
+	"msg.renamed": {LangEN: "%d blade(s) renamed", LangDE: "%d Blade(s) umbenannt"},
+	"warn.dupehost": {
+		LangEN: "%s is the name of %d blades. Give the sites a name prefix on their own page, or rename the blades by hand: a name that means two machines resolves to whichever answers first.",
+		LangDE: "%s ist der Name von %d Blades. Gib den Standorten auf ihrer Seite ein Namenskürzel oder benenne die Blades von Hand um: ein Name für zwei Maschinen löst auf die auf, die zuerst antwortet."},
+
 	"inv.title": {LangEN: "Inventory", LangDE: "Inventar"},
 	"inv.lead": {
 		LangEN: "What is screwed into the racks, across every site. This is what the blades reported about themselves, not a probe: a blade that has been away for a week still shows what it last said.",
