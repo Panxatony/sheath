@@ -322,6 +322,18 @@ func writeManagedFile(f managedFile) (bool, error) {
 	return true, os.Chmod(f.Path, f.Mode)
 }
 
+// osIdentity is the name this system answers to when a configuration says
+// per_os. It is not simply ID from /etc/os-release: DietPi says "debian"
+// there, which is true about its ancestry and wrong about everything that
+// matters here — it runs Dropbear rather than OpenSSH and ships no
+// ssh-keygen, so a rule written for DietPi has to reach it.
+func osIdentity() string {
+	if id, _, _, ok := dietPi(); ok {
+		return id
+	}
+	return parseKV("/etc/os-release")["ID"]
+}
+
 // ── Binaries ─────────────────────────────────────────────────────────
 
 // Some things a blade needs are single static binaries, not packages — the
@@ -619,7 +631,7 @@ func packageList(v any) []string {
 	if !ok {
 		return nil
 	}
-	osID := parseKV("/etc/os-release")["ID"]
+	osID := osIdentity()
 	var out []string
 	for _, e := range arr {
 		switch t := e.(type) {
@@ -703,7 +715,7 @@ func unitList(v any) []unitSpec {
 			// per_os says which name to use here, and an empty name means
 			// "this distribution does not have it" rather than an error.
 			if per, ok := t["per_os"].(map[string]any); ok {
-				osID := parseKV("/etc/os-release")["ID"]
+				osID := osIdentity()
 				if v, found := per[osID]; found {
 					n, _ = v.(string)
 				}

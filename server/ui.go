@@ -1551,6 +1551,14 @@ svg.topo .cell.ident{fill:var(--ident)}
    still reads in both themes. */
 a.brand{display:flex;align-items:center;gap:.5rem;text-decoration:none;color:inherit}
 a.brand:hover{color:var(--accent-ink)}
+/* The settings form: fields in a grid that keeps its columns narrow instead
+   of one input stretching across the page, and switches in a single column so
+   the eye runs down a list rather than hunting across a row. */
+.setgrid{display:grid;gap:.9rem 1.2rem;
+  grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));align-items:end}
+.setgrid .wide{grid-column:span 2;min-width:0}
+.setgrid input,.setgrid select{width:100%}
+.checks{display:grid;gap:.55rem;margin:1.1rem 0 0;max-width:44rem}
 label.check{display:flex;align-items:center;gap:.5rem;font:400 .95rem/1.4 inherit;
   text-transform:none;letter-spacing:0;color:var(--ink)}
 label.check input{width:auto;margin:0}
@@ -2993,19 +3001,19 @@ var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse
   <div class="card-head"><h2>{{t .L "set.agent"}}</h2>
     <span class="tag">{{t .L "set.scope"}}</span></div>
   <div class="body">
-    <div class="row">
-      <div class="narrow"><label for="iv">{{t .L "set.interval"}}</label>
+    <div class="setgrid">
+      <div><label for="iv">{{t .L "set.interval"}}</label>
         <input id="iv" type="number" name="interval" min="10" max="3600" value="{{.S.Interval}}" placeholder="60"></div>
-      <div class="narrow"><label for="ji">{{t .L "set.jitter"}}</label>
+      <div><label for="ji">{{t .L "set.jitter"}}</label>
         <input id="ji" type="number" name="jitter" min="0" max="600" value="{{.S.Jitter}}" placeholder="0"></div>
-      <div><label for="al">{{t .L "set.allow"}}</label>
+      <div><label for="mw">{{t .L "set.window"}}</label>
+        <input id="mw" type="text" name="maintenance" value="{{.S.Window}}" placeholder="02:00-04:00"></div>
+      <div class="wide"><label for="al">{{t .L "set.allow"}}</label>
         <input id="al" type="text" name="allow" value="{{.S.Allow}}" placeholder="{{t .L "set.allowhint"}}"></div>
     </div>
-    <div class="row" style="margin-top:.8rem">
-      <div><label class="check"><input type="checkbox" name="reboot_on_boot_config" value="1"{{if .S.RebootOnCfg}} checked{{end}}>
-        {{t .L "set.rebootcfg"}}</label></div>
-      <div class="narrow"><label for="mw">{{t .L "set.window"}}</label>
-        <input id="mw" type="text" name="maintenance" value="{{.S.Window}}" placeholder="02:00-04:00"></div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" name="reboot_on_boot_config" value="1"{{if .S.RebootOnCfg}} checked{{end}}>
+        {{t .L "set.rebootcfg"}}</label>
     </div>
     <p class="hint" style="margin:.9rem 0 0">{{t .L "set.reboothint"}}</p>
   </div>
@@ -3014,33 +3022,31 @@ var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse
 <div class="card">
   <div class="card-head"><h2>{{t .L "set.install"}}</h2></div>
   <div class="body">
-    <div class="row">
-      <div><label for="tg">{{t .L "set.target"}}</label>
+    <div class="setgrid">
+      <div class="wide"><label for="tg">{{t .L "set.target"}}</label>
         <input id="tg" type="text" name="install_target" value="{{.S.Target}}" placeholder="/dev/nvme0n1"></div>
-      <div class="narrow"><label for="af">{{t .L "set.after"}}</label>
+      <div><label for="af">{{t .L "set.after"}}</label>
         <select id="af" name="after">
           <option value=""{{if eq .S.After ""}} selected{{end}}>{{t .L "set.after.reboot"}}</option>
           <option value="halt"{{if eq .S.After "halt"}} selected{{end}}>{{t .L "set.after.halt"}}</option>
           <option value="shell"{{if eq .S.After "shell"}} selected{{end}}>{{t .L "set.after.shell"}}</option>
         </select></div>
-      <div class="narrow"><label for="rd">{{t .L "set.rebootwait"}}</label>
+      <div><label for="rd">{{t .L "set.rebootwait"}}</label>
         <input id="rd" type="number" name="reboot_delay" min="0" max="600" value="{{.S.RebootWait}}" placeholder="5"></div>
     </div>
-    <div class="row" style="margin-top:.8rem">
-      <div><label class="check"><input type="checkbox" name="require_checksum" value="1"{{if .S.NeedSum}} checked{{end}}>
-        {{t .L "set.needsum"}}</label></div>
-      <div><label class="check"><input type="checkbox" name="no_grow" value="1"{{if .S.NoGrow}} checked{{end}}>
-        {{t .L "set.nogrow"}}</label></div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" name="require_checksum" value="1"{{if .S.NeedSum}} checked{{end}}>
+        {{t .L "set.needsum"}}</label>
+      <label class="check"><input type="checkbox" name="no_grow" value="1"{{if .S.NoGrow}} checked{{end}}>
+        {{t .L "set.nogrow"}}</label>
+      <label class="check"><input type="checkbox" name="no_root_keys" value="1"{{if .S.NoRootKeys}} checked{{end}}>
+        {{t .L "set.nokeys"}}</label>
+      <label class="check"><input type="checkbox" name="no_cloud_init" value="1"{{if .S.NoCloud}} checked{{end}}>
+        {{t .L "set.nocloud"}}</label>
+      <label class="check"><input type="checkbox" name="no_agent" value="1"{{if .S.NoAgent}} checked{{end}}>
+        {{t .L "set.noagent"}}</label>
     </div>
-    <div class="row" style="margin-top:.5rem">
-      <div><label class="check"><input type="checkbox" name="no_root_keys" value="1"{{if .S.NoRootKeys}} checked{{end}}>
-        {{t .L "set.nokeys"}}</label></div>
-      <div><label class="check"><input type="checkbox" name="no_cloud_init" value="1"{{if .S.NoCloud}} checked{{end}}>
-        {{t .L "set.nocloud"}}</label></div>
-      <div><label class="check"><input type="checkbox" name="no_agent" value="1"{{if .S.NoAgent}} checked{{end}}>
-        {{t .L "set.noagent"}}</label></div>
-    </div>
-    <div style="margin-top:1.1rem"><button type="submit">{{t .L "form.save"}}</button></div>
+    <div style="margin-top:1.2rem"><button type="submit">{{t .L "form.save"}}</button></div>
     <p class="hint" style="margin:.9rem 0 0">{{t .L "set.seedhint"}}</p>
   </div>
 </div>
