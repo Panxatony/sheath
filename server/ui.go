@@ -3588,7 +3588,7 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
       <th>{{t .L "inv.blade"}}</th><th>{{t .L "inv.where"}}</th>
       <th>{{t .L "inv.board"}}</th><th>{{t .L "inv.ram"}}</th>
       <th>{{t .L "inv.cpu"}}</th><th>{{t .L "inv.storage"}}</th>
-      <th>{{t .L "inv.running"}}</th>
+      <th>{{t .L "inv.firmware"}}</th><th>{{t .L "inv.running"}}</th>
     </tr></thead>
     <tbody>
     {{range .Rows}}
@@ -3604,6 +3604,9 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
           <div class="mono sub2">{{if .Cores}}{{.Cores}} × {{end}}{{.MHz}}</div></td>
         <td class="mono">{{if .NVMe}}{{.NVMe}}{{end}}
           {{if .EMMC}}<div class="sub2">{{.EMMC}}</div>{{end}}</td>
+        <td>{{if .Boot}}<span class="mono">{{.Boot}}</span>{{end}}
+          <div class="mono sub2">{{if .VC}}VC {{.VC}}{{end}}</div>
+          {{if .BootVia}}<div class="hint">{{.BootVia}}</div>{{end}}</td>
         <td>{{.OS}}
           <div class="mono sub2">{{.Kernel}}{{if .Seen}} · {{.Seen}}{{end}}</div></td>
       </tr>
@@ -3611,6 +3614,7 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
     </tbody>
   </table>
   {{else}}<div class="body"><p class="hint">{{t .L "inv.empty"}}</p></div>{{end}}
+  <div class="body"><p class="hint" style="margin:0">{{t .L "inv.fwhint"}}</p></div>
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>

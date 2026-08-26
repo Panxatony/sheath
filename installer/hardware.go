@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // What this blade is made of — read in the mini OS, before anything is
@@ -15,13 +18,15 @@ import (
 // programs are separate modules built separately, each a static binary with
 // no dependencies; sharing two hundred lines between them would mean a third
 // module in every build for the sake of one struct. When one changes, change
-// the other: the test below is in both, so a drift in the decoding shows up
-// as a failing test rather than as two answers to the same question.
+// the other: the same test is in both, so a drift in the decoding shows up as
+// a failing test rather than as two answers to the same question.
 //
-// The mini OS has the same /proc/cpuinfo and the same block devices the
-// installed system will have, so the answer here is the answer there. What it
-// buys is the order: the interface can say "8 GB, Lite, no eMMC" while the
-// blade is still waiting for someone to choose an image for it.
+// The mini OS has the same /proc/cpuinfo, the same device tree and the same
+// block devices the installed system will have, so the answer here is the
+// answer there. What it buys is the order: the interface can say "8 GB, Lite,
+// no eMMC" while the blade is still waiting for someone to choose an image
+// for it. It also sees one thing the installed system cannot — that this
+// blade came up over the network, which is how it got here.
 //
 // "Raspberry Pi Compute Module 4 Rev 1.1" is what the device tree says, and it
 // leaves out everything anyone actually asks: how much memory, is there eMMC
@@ -74,13 +79,122 @@ func hardware() map[string]any {
 		}
 	}
 	h["wireless"] = hasWireless()
+	for k, v := range firmware() {
+		h[k] = v
+	}
 	if m := primaryMAC(); m != "" {
 		h["eth_mac"] = m
 	}
-	if v := firstLine("/sys/firmware/devicetree/base/chosen/bootloader/version"); v != "" {
-		h["bootloader"] = v
-	}
 	return h
+}
+
+// firmware is what runs before Linux does: the bootloader in the EEPROM, the
+// day it was built, how this blade came up this time, and the VideoCore
+// firmware that started the kernel. All of it is written into the device tree
+// by the firmware itself, so it is read rather than asked for — except the
+// VideoCore version, which only vcgencmd knows and only on systems that ship
+// it.
+func firmware() map[string]any {
+	out := map[string]any{}
+	if v := dtString("/proc/device-tree/chosen/bootloader/version"); v != "" {
+		out["bootloader"] = v
+		if len(v) > 8 {
+			out["bootloader_short"] = v[:8]
+		}
+	}
+	if ts, ok := dtUint32("/proc/device-tree/chosen/bootloader/build-timestamp"); ok && ts > 0 {
+		out["bootloader_built"] = time.Unix(int64(ts), 0).UTC().Format("2006-01-02")
+	}
+	if m, ok := dtUint32("/proc/device-tree/chosen/bootloader/boot-mode"); ok {
+		out["boot_mode"] = bootModeName(m)
+	}
+	if v := vcgencmdVersion(); v != "" {
+		out["vc_firmware"] = v
+	}
+	return out
+}
+
+// bootModeName translates the number the bootloader recorded into the thing
+// it means. Same numbering as BOOT_ORDER, which is where anyone who cares
+// about this will look next.
+func bootModeName(m uint32) string {
+	switch m {
+	case 1:
+		return "sd"
+	case 2:
+		return "network"
+	case 3:
+		return "rpiboot"
+	case 4:
+		return "usb-msd"
+	case 5:
+		return "usb-bcm"
+	case 6:
+		return "nvme"
+	case 7:
+		return "http"
+	}
+	return fmt.Sprintf("mode %d", m)
+}
+
+// vcgencmdVersion asks the VideoCore for its firmware date. It is the one
+// piece here that runs a program, because there is no file that holds it, and
+// it is skipped where the tool is not installed — Debian ships without it.
+func vcgencmdVersion() string {
+	path, err := exec.LookPath("vcgencmd")
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "version").Output()
+	if err != nil {
+		return ""
+	}
+	// Three lines: a date, a copyright, and "version <hash> (clean) ...".
+	date, hash := "", ""
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "version "):
+			f := strings.Fields(line)
+			if len(f) > 1 && len(f[1]) >= 8 {
+				hash = f[1][:8]
+			}
+		case date == "" && line != "" && !strings.HasPrefix(line, "Copyright"):
+			date = line
+		}
+	}
+	if t, err := time.Parse("Jan _2 2006 15:04:05", date); err == nil {
+		date = t.Format("2006-01-02")
+	}
+	switch {
+	case date != "" && hash != "":
+		return date + " (" + hash + ")"
+	case date != "":
+		return date
+	}
+	return hash
+}
+
+// dtString reads a device tree property that holds text: NUL terminated, and
+// the NUL is part of the property rather than the string.
+func dtString(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(b), "\x00\n ")
+}
+
+// dtUint32 reads a device tree property that holds one number, big endian as
+// the device tree always is.
+func dtUint32(path string) (uint32, bool) {
+	b, err := os.ReadFile(path)
+	if err != nil || len(b) < 4 {
+		return 0, false
+	}
+	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3]), true
 }
 
 // board is a revision code, read out.
@@ -128,12 +242,25 @@ func decodeRevision(hex string) (board, bool) {
 	return b, true
 }
 
+// revisionCode asks the two places it is written down. A Raspberry Pi kernel
+// puts it in /proc/cpuinfo; an upstream kernel does not, and the firmware's
+// own copy in the device tree is the only one left. A blade running Debian
+// answered "no revision" until this looked in the second place, and its
+// memory then had to be guessed from what the kernel had left over — 7.6 GB
+// for a module with 8 on it.
 func revisionCode() string {
 	for _, line := range strings.Split(readWhole("/proc/cpuinfo"), "\n") {
 		if strings.HasPrefix(line, "Revision") {
 			if _, v, ok := strings.Cut(line, ":"); ok {
 				return strings.TrimSpace(v)
 			}
+		}
+	}
+	// Four bytes, big endian, as the firmware wrote them.
+	if b, err := os.ReadFile("/proc/device-tree/system/linux,revision"); err == nil && len(b) >= 4 {
+		v := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+		if v != 0 {
+			return fmt.Sprintf("%x", v)
 		}
 	}
 	return ""

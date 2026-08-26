@@ -28,6 +28,15 @@ have been up to.
 
 ![A BladeRunner with four blades and its activity log](docs/img/bladerunner.png)
 
+The inventory: what is screwed into the racks across every site. The module and
+its revision, the memory, the eMMC or the absence of one, the NVMe, the
+bootloader and how each blade came up this time. It is read from the revision
+code the firmware leaves in the OTP and from the device tree — and the mini OS
+reads it too, so a blade waiting for someone to choose an image already says
+what it is.
+
+![The inventory across two sites](docs/img/inventory.png)
+
 The screenshots come from a demonstration instance with invented blades — the
 addresses and serial numbers in them belong to nothing.
 

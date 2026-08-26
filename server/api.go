@@ -821,7 +821,7 @@ func (a *App) hBladeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	facts, health := "{}", "{}"
 	if len(in.Facts) > 0 {
-		facts = string(in.Facts)
+		facts = keepHardware(a.factsOf(serial), string(in.Facts))
 	}
 	if len(in.Health) > 0 {
 		health = string(in.Health)
@@ -1469,4 +1469,46 @@ func (a *App) hEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, out)
+}
+
+// keepHardware carries the module's own description across a report that does
+// not mention it. What a blade is made of is a property of the module, not of
+// what is installed on it, and one operating system can read things another
+// cannot: a blade on Debian could not find its revision code and reported no
+// memory size, which would otherwise have erased the 8 GB the mini OS read
+// off the same module an hour earlier.
+func keepHardware(before, now string) string {
+	var old, cur map[string]any
+	if json.Unmarshal([]byte(before), &old) != nil || json.Unmarshal([]byte(now), &cur) != nil {
+		return now
+	}
+	for _, k := range hardwareKeys {
+		if _, has := cur[k]; has {
+			continue
+		}
+		if v, ok := old[k]; ok {
+			cur[k] = v
+		}
+	}
+	out, err := json.Marshal(cur)
+	if err != nil {
+		return now
+	}
+	return string(out)
+}
+
+// hardwareKeys are the facts about the module itself, as opposed to the
+// system running on it.
+var hardwareKeys = []string{
+	"board", "board_rev", "board_revision", "soc", "maker", "ram_mb",
+	"cpu_cores", "cpu_mhz", "emmc_bytes", "emmc_model", "nvme_bytes",
+	"nvme_model", "wireless", "eth_mac", "bootloader",
+}
+
+func (a *App) factsOf(serial string) string {
+	var raw string
+	if err := a.db.QueryRow(`SELECT facts_json FROM blades WHERE serial=?`, serial).Scan(&raw); err != nil || raw == "" {
+		return "{}"
+	}
+	return raw
 }

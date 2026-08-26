@@ -40,6 +40,9 @@ type invRow struct {
 	NVMe    string
 	Model   string // what the device tree calls it, when the code says nothing
 	Radio   string
+	Boot    string // bootloader, its build date, and how the blade came up
+	VC      string // the VideoCore firmware, where the system can say
+	BootVia string
 	OS      string
 	Kernel  string
 	Agent   string
@@ -139,6 +142,16 @@ func (a *App) inventory(l Lang) ([]invRow, invSummary, error) {
 		}
 		if w, ok := f["wireless"].(bool); ok && w {
 			r.Radio = T(l, "inv.radio")
+		}
+		if bl := str(f, "bootloader_short"); bl != "" {
+			r.Boot = bl
+			if d := str(f, "bootloader_built"); d != "" {
+				r.Boot += " · " + d
+			}
+		}
+		r.VC = str(f, "vc_firmware")
+		if m := str(f, "boot_mode"); m != "" {
+			r.BootVia = T(l, "inv.via."+m)
 		}
 		if r.Board == "" && r.RAM == "" {
 			r.Missing = true
