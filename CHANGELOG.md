@@ -6,6 +6,15 @@ on `main`.
 ## Unreleased
 
 ### Added
+- **Notification when a blade goes bad.** The verdict was computed, coloured
+  and logged, and then it sat on a page nobody was looking at. It now reaches
+  a mailbox: SMTP with STARTTLS, implicit TLS or neither, a test button, a
+  level to send from, and an hour-of-the-night hold time. Nothing is sent
+  until a verdict has held — a blade that reboots is briefly offline and
+  briefly warm, and neither is news — and what went bad is said once, as is
+  what recovered. The mail password lives in the settings table and never in
+  the configuration document, because the desired state a blade pulls would
+  carry it to every blade in the rack.
 - A **backup** of the database, written on the machine itself for the backup
   that carries the machine away. Daily at a set hour, plus one at startup when
   the newest is older than a day; the newest is always `sheath-latest.db`, the

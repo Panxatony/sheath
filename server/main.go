@@ -186,6 +186,7 @@ func main() {
 	mux.HandleFunc("GET /settings", app.requireUI(app.hSettings))
 	mux.HandleFunc("POST /settings", app.requireUI(app.hSettingsSave))
 	mux.HandleFunc("POST /settings/backup", app.requireUI(app.hUIBackupNow))
+	mux.HandleFunc("POST /settings/notify", app.requireUI(app.hUINotifySave))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
 	mux.HandleFunc("GET /images", app.requireUI(app.hImagesPage))
 	mux.HandleFunc("POST /images/add", app.requireUI(app.hUIImageAdd))
@@ -236,6 +237,7 @@ func main() {
 	// Mark blades that have not checked in for a while as offline.
 	go app.reaper()
 	go app.runBackups()
+	go app.watchHealth()
 	// Tail dnsmasq: that is how Sheath sees a blade netbooting, before any
 	// operating system runs on it. Where a sheath-site owns the wire it does
 	// the watching and reports what it saw, and doing it twice would mean two

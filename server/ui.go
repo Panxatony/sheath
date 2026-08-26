@@ -2865,6 +2865,26 @@ func (a *App) hSettings(w http.ResponseWriter, r *http.Request) {
 		NoRootKeys: flag(in, "no_root_keys"), NoCloud: flag(in, "no_cloud_init"),
 		NoAgent: flag(in, "no_agent"),
 	}
+	mc := a.mailConf()
+	openAl, _ := a.openAlerts()
+	alerts := make([]alertView, 0, len(openAl))
+	for _, al := range openAl {
+		hn := al.Serial
+		if b, err := a.getBlade(al.Serial); err == nil && b.Hostname != "" {
+			hn = b.Hostname
+		}
+		led := "warn"
+		if al.Level == "crit" {
+			led = "bad"
+		}
+		alerts = append(alerts, alertView{
+			Name: hn, Level: al.Level, LED: led, Reason: al.Reason,
+			Since: al.Since.Local().Format("2006-01-02 15:04"),
+			Sent:  al.Notified != "",
+		})
+	}
+	sort.Slice(alerts, func(i, j int) bool { return alerts[i].Name < alerts[j].Name })
+
 	bk := a.backupInfo()
 	last := T(l, "bk.none")
 	if !bk.Last.IsZero() {
@@ -2874,6 +2894,7 @@ func (a *App) hSettings(w http.ResponseWriter, r *http.Request) {
 		"L": l, "Path": "/settings", "LocalSite": a.localSiteID(),
 		"S": sv, "Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
 		"BK": bk, "BKLast": last,
+		"NF": mc, "HasPass": mc.Pass != "", "Alerts": alerts,
 	})
 }
 
@@ -3068,6 +3089,65 @@ var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse
   </div>
 </div>
 </form>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "nf.title"}}</h2>
+    <span class="tag">{{t .L "nf.open"}}: {{if .Alerts}}{{len .Alerts}}{{else}}{{t .L "nf.opennone"}}{{end}}</span></div>
+  <div class="body">
+    <p class="hint" style="margin:0 0 1rem">{{t .L "nf.lead"}}</p>
+    {{if .Alerts}}
+    <table class="tbl" style="margin-bottom:1.2rem">
+      <tbody>
+      {{range .Alerts}}
+        <tr><td><b>{{.Name}}</b></td>
+          <td><span class="chip {{.LED}}">{{.Level}}</span></td>
+          <td>{{.Reason}}</td>
+          <td class="right"><span class="hint">{{.Since}}{{if .Sent}} · sent{{end}}</span></td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{end}}
+    <form method="post" action="/settings/notify">
+      <div class="setgrid">
+        <div class="wide"><label for="nh">{{t .L "nf.host"}}</label>
+          <input id="nh" type="text" name="host" value="{{.NF.Host}}" placeholder="mail.example.org"></div>
+        <div><label for="np">{{t .L "nf.port"}}</label>
+          <input id="np" type="number" name="port" min="1" max="65535" value="{{.NF.Port}}"></div>
+        <div><label for="ns">{{t .L "nf.sec"}}</label>
+          <select id="ns" name="tls">
+            <option value="starttls"{{if eq .NF.TLS "starttls"}} selected{{end}}>{{t .L "nf.starttls"}}</option>
+            <option value="tls"{{if eq .NF.TLS "tls"}} selected{{end}}>{{t .L "nf.tls"}}</option>
+            <option value="none"{{if eq .NF.TLS "none"}} selected{{end}}>{{t .L "nf.none"}}</option>
+          </select></div>
+        <div><label for="nu">{{t .L "nf.user"}}</label>
+          <input id="nu" type="text" name="user" value="{{.NF.User}}" autocomplete="off"></div>
+        <div><label for="nw">{{t .L "nf.pass"}}</label>
+          <input id="nw" type="password" name="pass" autocomplete="new-password"
+                 placeholder="{{if .HasPass}}{{t .L "nf.passset"}} — {{end}}{{t .L "nf.passkeep"}}"></div>
+        <div class="wide"><label for="nfr">{{t .L "nf.from"}}</label>
+          <input id="nfr" type="email" name="from" value="{{.NF.From}}"></div>
+        <div class="wide"><label for="nt">{{t .L "nf.to"}}</label>
+          <input id="nt" type="text" name="to" value="{{.NF.To}}" placeholder="{{t .L "nf.tohint"}}"></div>
+        <div><label for="nm">{{t .L "nf.min"}}</label>
+          <select id="nm" name="min">
+            <option value="warn"{{if eq .NF.Min "warn"}} selected{{end}}>{{t .L "nf.min.warn"}}</option>
+            <option value="crit"{{if eq .NF.Min "crit"}} selected{{end}}>{{t .L "nf.min.crit"}}</option>
+          </select></div>
+        <div><label for="nhd">{{t .L "nf.hold"}}</label>
+          <input id="nhd" type="number" name="hold" min="1" max="1440" value="{{.NF.HoldMin}}"></div>
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" name="enabled" value="1"{{if .NF.Enabled}} checked{{end}}>
+          {{t .L "nf.on"}}</label>
+      </div>
+      <div style="margin-top:1.2rem;display:flex;gap:.6rem;align-items:center">
+        <button type="submit">{{t .L "form.save"}}</button>
+        <button type="submit" name="test" value="1" class="ghost">{{t .L "nf.test"}}</button>
+      </div>
+    </form>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "nf.secret"}}</p>
+  </div>
+</div>
 
 <div class="card">
   <div class="card-head"><h2>{{t .L "bk.title"}}</h2>
@@ -3299,4 +3379,58 @@ func (a *App) hUIBackupNow(w http.ResponseWriter, r *http.Request) {
 	a.logEvent("", "info", msg)
 	redirectMsg(w, r, "/settings", "msg",
 		fmt.Sprintf(T(l, "bk.done"), filepath.Base(path), human(size)))
+}
+
+// alertView is one line of "currently unwell" on the settings page.
+type alertView struct {
+	Name   string
+	Level  string
+	LED    string
+	Reason string
+	Since  string
+	Sent   bool
+}
+
+// hUINotifySave writes the notification settings. The password is the one
+// field that survives an empty box: a form that has to show a secret in order
+// to keep it is a form that shows a secret.
+func (a *App) hUINotifySave(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, "/settings", "err", T(l, "err.form"))
+		return
+	}
+	set := func(key, val string) { _ = a.setSetting(key, val) }
+	set("notify_host", strings.TrimSpace(r.FormValue("host")))
+	set("notify_port", strings.TrimSpace(r.FormValue("port")))
+	set("notify_tls", r.FormValue("tls"))
+	set("notify_user", strings.TrimSpace(r.FormValue("user")))
+	set("notify_from", strings.TrimSpace(r.FormValue("from")))
+	set("notify_to", strings.TrimSpace(r.FormValue("to")))
+	set("notify_min", r.FormValue("min"))
+	set("notify_hold_min", strings.TrimSpace(r.FormValue("hold")))
+	if r.FormValue("enabled") != "" {
+		set("notify_enabled", "1")
+	} else {
+		set("notify_enabled", "")
+	}
+	if pw := r.FormValue("pass"); pw != "" {
+		set("notify_pass", pw)
+	}
+	a.logEvent("", "info", "notification settings changed")
+
+	if r.FormValue("test") == "" {
+		redirectMsg(w, r, "/settings", "msg", T(l, "msg.saved"))
+		return
+	}
+	conf := a.mailConf()
+	subject := "Sheath: test"
+	body := "This is the test from the settings page.\n\n" +
+		"If it arrived, a blade that goes bad will reach you the same way.\n"
+	if err := sendMail(conf, subject, body); err != nil {
+		redirectMsg(w, r, "/settings", "err", fmt.Sprintf(T(l, "nf.failed"), err.Error()))
+		return
+	}
+	a.logEvent("", "info", "test notification sent to "+conf.To)
+	redirectMsg(w, r, "/settings", "msg", fmt.Sprintf(T(l, "nf.sent"), conf.To))
 }

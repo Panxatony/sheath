@@ -236,7 +236,7 @@ sudo install -o root  -g root  -m 0755 tools/mirror-image.sh tools/prepare-image
 ```
 
 The two shell tools go somewhere root owns because the server runs them under
-`sudo` when an image is added from the interface (§3.11). Leaving them writable
+`sudo` when an image is added from the interface (§3.12). Leaving them writable
 by the service user would turn one allowed command into any command.
 
 The agent binary goes into `/srv/sheath/agent/` because the installer fetches it
@@ -322,7 +322,7 @@ sudo visudo -cf /etc/sudoers.d/sheath-images
 
 The scripts must be owned by root and not writable by `sheath` — otherwise the
 rule permits whatever the service user cares to write into them. Skip this file
-entirely where images are only ever added by hand on the command line (§3.11).
+entirely where images are only ever added by hand on the command line (§3.12).
 
 ### 3.4 First start, the admin token, and site 1
 
@@ -859,7 +859,45 @@ sudo -u sheath /srv/sheath/sheathd -db /tmp/drill.db -addr 127.0.0.1:8099 \
 curl -s localhost:8099/api/v1/health
 ```
 
-### 3.11 Images
+### 3.11 Notification
+
+The health verdict is computed on every heartbeat, coloured on every page and
+written into the log. Until this existed, that was all it did: a blade that
+overheated at three in the morning was amber on a page nobody was looking at.
+
+The **Notification** card on `/settings` holds an SMTP server, port, security
+(`STARTTLS` on 587, `TLS` on 465, or none), user and password, sender and one
+or more recipients, the level to send from, and the hold time. **Send a test**
+sends one mail immediately, which is the only way to find out that a password
+is right.
+
+Two rules keep it from becoming noise, and noise is the only way a
+notification stops being read:
+
+- **A verdict has to hold.** Nothing is sent until a blade has been unwell for
+  the hold time (default ten minutes). A blade that reboots is briefly offline
+  and briefly warm; neither is news. The pass runs once a minute, so a spike
+  is recorded, watched, and dropped again without a word.
+- **Once each way.** What went bad is said once, and what recovered is said
+  once. A blade that is warm for two days sends one mail, not two thousand.
+  A verdict that gets *worse* — attention to trouble — starts the clock again
+  and may be said a second time.
+
+The state lives in the `alerts` table, one row per blade that is currently
+unwell, and the settings page lists them under the card. A failed send is
+logged and **not** marked as sent, so the next pass tries again.
+
+**The password is not part of what a blade receives.** It is kept in the
+`settings` table, never shown again once saved, and deliberately not in the
+configuration document — the desired state a blade pulls would otherwise carry
+the mail password to every blade in the rack. Leaving the password box empty
+keeps what is stored.
+
+Where mail is not wanted, leave the card switched off: the alert rows are still
+kept and the events are still written, so the log tells the same story
+afterwards.
+
+### 3.12 Images
 
 Images live in `/srv/sheath/images/` on the centre, are served under `/images/`,
 and are copied to each site that needs them — once per site, not once per blade.
@@ -946,7 +984,7 @@ the note. The bytes are on disk and a blade can be installed from them; only the
 customisation did not happen, and calling that an error would suggest there is
 nothing to install.
 
-### 3.12 Settings and policy
+### 3.13 Settings and policy
 
 Two places hold the numbers, and they are not the same thing.
 
@@ -1196,7 +1234,7 @@ segments.
   both ways, **Reboot**, **Reimage**, **Erase NVMe** and **Remove**.
 - **Images `/images`** — the catalogue, what each entry can do, and the form that
   fetches and prepares a new one. An image in use cannot be removed.
-- **Settings `/settings`** — the agent and installation sections (§3.12).
+- **Settings `/settings`** — the agent and installation sections (§3.13).
 
 Every action is a POST followed by a redirect, so a reload never triggers
 anything twice.
@@ -1467,7 +1505,7 @@ curl -sS -H "Authorization: Bearer $T" \
      http://10.0.0.10:8080/api/v1/config/global > global.json
 ```
 
-The settings page (§3.12) is safe by construction: it writes only the two
+The settings page (§3.13) is safe by construction: it writes only the two
 sections it owns and merges them.
 
 ### A DietPi blade shows permanent drift

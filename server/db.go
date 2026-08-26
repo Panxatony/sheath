@@ -81,6 +81,15 @@ CREATE TABLE IF NOT EXISTS blades (
     UNIQUE (rack_id, slot)
 );
 
+CREATE TABLE IF NOT EXISTS alerts (
+    serial      TEXT PRIMARY KEY,
+    level       TEXT NOT NULL,
+    reason      TEXT NOT NULL DEFAULT '',
+    since       TEXT NOT NULL,
+    notified    TEXT NOT NULL DEFAULT '',
+    notified_at TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS images (
     id        TEXT PRIMARY KEY,
     url       TEXT NOT NULL,
@@ -1108,4 +1117,48 @@ func decorate(b *Blade, racks map[int64]Rack, nets map[int64]siteNet, idx map[in
 	if *b.Slot >= 1 && *b.Slot <= r.Size && sn.NetBase != "" {
 		b.IP = fmt.Sprintf("%s.%d", sn.NetBase, r.IPOffset+*b.Slot)
 	}
+}
+
+// ── Alerts ───────────────────────────────────────────────────────────
+//
+// One row per blade that is currently not well. The row is what keeps a
+// notification from being sent twice, and what makes "it recovered" a thing
+// that can be said at all.
+
+func (a *App) openAlerts() (map[string]alert, error) {
+	rows, err := a.db.Query(`SELECT serial,level,reason,since,notified FROM alerts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]alert{}
+	for rows.Next() {
+		var al alert
+		var since string
+		if err := rows.Scan(&al.Serial, &al.Level, &al.Reason, &since, &al.Notified); err != nil {
+			continue
+		}
+		al.Since, _ = time.Parse(time.RFC3339, since)
+		out[al.Serial] = al
+	}
+	return out, rows.Err()
+}
+
+func (a *App) raiseAlert(al alert) error {
+	notifiedAt := ""
+	if al.Notified != "" {
+		notifiedAt = now()
+	}
+	_, err := a.db.Exec(`INSERT INTO alerts(serial,level,reason,since,notified,notified_at)
+		VALUES(?,?,?,?,?,?)
+		ON CONFLICT(serial) DO UPDATE SET level=excluded.level, reason=excluded.reason,
+		  since=excluded.since, notified=excluded.notified,
+		  notified_at=CASE WHEN excluded.notified<>'' THEN excluded.notified_at ELSE alerts.notified_at END`,
+		al.Serial, al.Level, al.Reason, al.Since.UTC().Format(time.RFC3339), al.Notified, notifiedAt)
+	return err
+}
+
+func (a *App) clearAlert(serial string) error {
+	_, err := a.db.Exec(`DELETE FROM alerts WHERE serial=?`, serial)
+	return err
 }
