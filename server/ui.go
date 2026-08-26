@@ -1525,8 +1525,12 @@ display:inline-block}
    like everything else; nothing here is a literal. */
 .topo-wrap{overflow-x:auto}
 svg.topo{display:block;width:100%;min-width:48rem;height:auto}
-svg.topo .node rect{fill:var(--surface-2);stroke:var(--rule-s);stroke-width:1}
-svg.topo .centre rect{fill:var(--accent-soft);stroke:var(--accent)}
+/* The boxes carry a class rather than being matched as "rect": that selector
+   was more specific than the one for the slot squares inside them, so every
+   occupied slot was painted in the box colour and the map showed a rack of
+   empty slots while three blades were running. */
+svg.topo .box{fill:var(--surface-2);stroke:var(--rule-s);stroke-width:1}
+svg.topo .centre .box{fill:var(--accent-soft);stroke:var(--accent)}
 svg.topo text{font:400 .82rem/1 ui-monospace,monospace;fill:var(--ink-2)}
 svg.topo text.t1{font-weight:600;font-size:1rem;fill:var(--ink)}
 svg.topo text.t3{font-size:.76rem;fill:var(--ink-3)}
@@ -2248,7 +2252,10 @@ func (a *App) hTopology(w http.ResponseWriter, r *http.Request) {
 		g.Racks++
 		rv := a.buildRackView(rk, blades, l)
 		for _, c := range rv.Cells {
-			if c.Class != "off" {
+			// "free" is what an empty slot is called; counting those as
+			// blades made a four-slot BladeRunner with one blade in it
+			// report four.
+			if c.Class != "free" {
 				g.Blades++
 			}
 			g.Cells = append(g.Cells, c)
@@ -2285,7 +2292,7 @@ func topoSVG(l Lang, sites []topoSite, baseURL string) template.HTML {
 		`aria-label="%s">`, topoWidth, height, T(l, "map.alt"))
 
 	// The centre.
-	fmt.Fprintf(&b, `<g class="node centre"><rect x="20" y="%.1f" width="250" height="96" rx="4"/>`,
+	fmt.Fprintf(&b, `<g class="node centre"><rect class="box" x="20" y="%.1f" width="250" height="96" rx="4"/>`,
 		centreY-48)
 	fmt.Fprintf(&b, `<text class="t1" x="40" y="%.1f">Sheath</text>`, centreY-20)
 	fmt.Fprintf(&b, `<text class="t2" x="40" y="%.1f">%s</text>`, centreY+2, esc(T(l, "map.centre")))
@@ -2303,7 +2310,7 @@ func topoSVG(l Lang, sites []topoSite, baseURL string) template.HTML {
 		fmt.Fprintf(&b, `<circle class="dot %s" cx="%.0f" cy="%.1f" r="4"/>`,
 			s.SLED, topoSiteX, mid)
 
-		fmt.Fprintf(&b, `<g class="node site"><rect x="%.0f" y="%.1f" width="%.0f" height="%.0f" rx="4"/>`,
+		fmt.Fprintf(&b, `<g class="node site"><rect class="box" x="%.0f" y="%.1f" width="%.0f" height="%.0f" rx="4"/>`,
 			topoSiteX, y, topoBoxW, topoBoxH)
 
 		// First line: who this is, and — right-aligned, with the dot beside
