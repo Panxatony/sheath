@@ -6,6 +6,14 @@ sheath_version: latest
 sheath_release_repo: Panxatony/sheath
 sheath_local_bin_dir: ""
 
+# Where a release artefact is fetched from. "latest" follows the newest
+# release; a tag pins it, which is what an installation you have to reason
+# about later wants.
+sheath_release_url: >-
+  {{ ('https://github.com/' ~ sheath_release_repo ~ '/releases/latest/download')
+     if sheath_version == 'latest'
+     else ('https://github.com/' ~ sheath_release_repo ~ '/releases/download/' ~ sheath_version) }}
+
 # The architecture of the machines. Everything here is arm64 by default
 # because that is what the blades are and what the image preparation needs.
 sheath_arch: arm64
