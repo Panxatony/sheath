@@ -298,6 +298,7 @@ func (s *site) report(d *desired) {
 		"images":     len(d.Images),
 		"dnsmasq_ok": true,
 		"stock":      s.stockHeld(),
+		"payload":    s.payloadHeld(),
 	})
 	req, err := http.NewRequest("POST",
 		fmt.Sprintf("%s/api/v1/site/%d/status", s.cfg.Server, s.cfg.SiteID),

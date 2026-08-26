@@ -6,6 +6,23 @@ on `main`.
 ## Unreleased
 
 ### Added
+- An **Inventory** page: every blade across every site with what it is made
+  of — module and board revision, memory, SoC, cores and clock, eMMC or Lite,
+  the NVMe and its model — and a line saying what the fleet adds up to. The
+  agent reads it from the revision code in `/proc/cpuinfo`, which the firmware
+  fills from the OTP and which carries the board type, revision, memory size,
+  chip and manufacturer; the device tree model says less than that. Storage
+  comes from the block devices. `GET /api/v1/inventory` returns the same table
+  for something that is not a browser.
+- The netboot payload has a checksum and a version at last. The centre states
+  what it built, each site reports what it serves, and the interface says so
+  where the two differ — an installer fix used to be deployed by remembering
+  to deploy it.
+- A site now rewrites `cmdline.txt` inside the payload to point at itself
+  (`--relay-url`), so a blade at a remote site fetches from the machine in its
+  own room rather than across the link that may be the thing that is down. The
+  FAT16 file is replaced in place, without mtools: a core function should not
+  depend on a package somebody remembered to install.
 - **Notification when a blade goes bad.** The verdict was computed, coloured
   and logged, and then it sat on a page nobody was looking at. It now reaches
   a mailbox: SMTP with STARTTLS, implicit TLS or neither, a test button, a

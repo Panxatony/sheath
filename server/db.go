@@ -172,6 +172,8 @@ var migrations = []string{
 	`ALTER TABLE images ADD COLUMN min_disk INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE images ADD COLUMN verified INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE images ADD COLUMN state TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN payload TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
 }
@@ -205,6 +207,13 @@ type Site struct {
 	Token    string `json:"-"`
 	LastSeen string `json:"last_seen"`
 	Created  string `json:"created"`
+
+	// What the site last said about itself: the checksum of the netboot
+	// payload it serves, and the version of the program serving it. A site
+	// that has never reported says nothing, which is different from a site
+	// that reported nothing.
+	Payload     string `json:"payload"`
+	SiteVersion string `json:"site_version"`
 }
 
 type Rack struct {
@@ -906,14 +915,15 @@ func (a *App) listImages() ([]Image, error) {
 // ── Sites ────────────────────────────────────────────────────────────
 
 const siteCols = `id,name,location,net_base,gateway,dns,domain,
-	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created`
+	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created,
+	payload,site_version`
 
 func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	var st Site
 	var local int
 	err := sc.Scan(&st.ID, &st.Name, &st.Location, &st.NetBase, &st.Gateway, &st.DNS,
 		&st.Domain, &st.PoolFrom, &st.PoolTo, &st.OffsetBase, &st.OffsetStep,
-		&local, &st.Token, &st.LastSeen, &st.Created)
+		&local, &st.Token, &st.LastSeen, &st.Created, &st.Payload, &st.SiteVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -1161,4 +1171,12 @@ func (a *App) raiseAlert(al alert) error {
 func (a *App) clearAlert(serial string) error {
 	_, err := a.db.Exec(`DELETE FROM alerts WHERE serial=?`, serial)
 	return err
+}
+
+// recordSiteSelf keeps what a site says about itself: which netboot payload it
+// serves and which version of sheath-site is serving it. Written on every
+// heartbeat, because a payload can change between two of them.
+func (a *App) recordSiteSelf(id int64, payload, siteVersion string) {
+	_, _ = a.db.Exec(`UPDATE sites SET payload=?, site_version=? WHERE id=?`,
+		payload, siteVersion, id)
 }

@@ -283,6 +283,41 @@ var catalog = map[string]map[Lang]string{
 	"img.remove":    {LangEN: "Remove", LangDE: "Entfernen"},
 	"img.rmask":     {LangEN: "Remove %s including the mirrored file?", LangDE: "%s samt gespiegelter Datei entfernen?"},
 
+	"inv.title": {LangEN: "Inventory", LangDE: "Inventar"},
+	"inv.lead": {
+		LangEN: "What is screwed into the racks, across every site. This is what the blades reported about themselves, not a probe: a blade that has been away for a week still shows what it last said.",
+		LangDE: "Was in den Racks steckt, über alle Standorte. Das ist, was die Blades über sich gemeldet haben, keine Abfrage: ein Blade, das seit einer Woche weg ist, zeigt weiterhin, was es zuletzt gesagt hat."},
+	"inv.blade":   {LangEN: "Blade", LangDE: "Blade"},
+	"inv.where":   {LangEN: "Where", LangDE: "Wo"},
+	"inv.board":   {LangEN: "Module", LangDE: "Modul"},
+	"inv.ram":     {LangEN: "Memory", LangDE: "Speicher"},
+	"inv.cpu":     {LangEN: "Processor", LangDE: "Prozessor"},
+	"inv.storage": {LangEN: "Storage", LangDE: "Datenträger"},
+	"inv.running": {LangEN: "Running", LangDE: "Läuft"},
+	"inv.emmc":    {LangEN: "eMMC", LangDE: "eMMC"},
+	"inv.nvme":    {LangEN: "NVMe", LangDE: "NVMe"},
+	"inv.lite":    {LangEN: "Lite (no eMMC)", LangDE: "Lite (kein eMMC)"},
+	"inv.radio":   {LangEN: "wireless", LangDE: "Funk"},
+	"inv.none":    {LangEN: "This blade has not said what it is yet.", LangDE: "Dieses Blade hat noch nicht gesagt, was es ist."},
+	"inv.empty":   {LangEN: "No blade in the inventory yet.", LangDE: "Noch kein Blade im Inventar."},
+	"inv.sum":     {LangEN: "Together", LangDE: "Zusammen"},
+	"inv.unknown": {LangEN: "%d without hardware data", LangDE: "%d ohne Hardware-Angaben"},
+	"inv.revhint": {
+		LangEN: "The revision code is the module's true name: the firmware reads it out of the OTP and it carries the board type, the revision, the memory size, the chip and who built it. The device tree model says less.",
+		LangDE: "Der Revisionscode ist der eigentliche Name des Moduls: die Firmware liest ihn aus dem OTP, und er trägt Bauform, Revision, Speichergröße, Chip und Hersteller. Das Device-Tree-Modell sagt weniger."},
+
+	"pay.title":    {LangEN: "Netboot payload", LangDE: "Netboot-Payload"},
+	"pay.same":     {LangEN: "installer as at the centre", LangDE: "Installer wie in der Zentrale"},
+	"pay.differs":  {LangEN: "different installer than the centre", LangDE: "anderer Installer als die Zentrale"},
+	"pay.unknown":  {LangEN: "installer unknown", LangDE: "Installer unbekannt"},
+	"pay.nocentre": {LangEN: "the centre has no payload", LangDE: "die Zentrale hat kein Payload"},
+	"pay.centre":   {LangEN: "Centre", LangDE: "Zentrale"},
+	"pay.here":     {LangEN: "This site", LangDE: "Dieser Standort"},
+	"pay.none":     {LangEN: "none", LangDE: "keins"},
+	"pay.hint": {
+		LangEN: "The centre builds the payload and every site fetches it. A site that serves a different one hands a blade a different installer than the one you last built — it will catch up on its next pass, unless it cannot reach the centre.",
+		LangDE: "Die Zentrale baut das Payload, jeder Standort holt es sich. Ein Standort mit einem anderen gibt einem Blade einen anderen Installer als den zuletzt gebauten — er zieht beim nächsten Durchlauf nach, sofern er die Zentrale erreicht."},
+
 	"nf.title": {LangEN: "Notification", LangDE: "Benachrichtigung"},
 	"nf.lead": {
 		LangEN: "Where to say it when a blade goes bad. Nothing is sent until a verdict has held for the hold time — a blade that reboots is briefly offline and briefly warm, and neither is news. What went bad is said once, and what recovered is said once.",

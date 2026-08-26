@@ -37,6 +37,7 @@ type config struct {
 	ImagesDir string
 	TFTPDir   string
 	StateDir  string
+	RelayURL  string
 	Interval  time.Duration
 }
 
@@ -53,6 +54,9 @@ func main() {
 		interval  = flag.Duration("interval", 30*time.Second, "interval between two passes")
 		listen    = flag.String("listen", ":8081",
 			"address for the blade relay; empty turns the relay off")
+		relayURL = flag.String("relay-url", "",
+			"URL blades at this site should use, e.g. http://10.0.0.10:8081 — "+
+				"written into the netboot payload so a blade here talks to this site")
 		once   = flag.Bool("once", false, "run a single pass and exit")
 		dryRun = flag.Bool("dry-run", false, "compute everything, write nothing")
 	)
@@ -75,6 +79,7 @@ func main() {
 		ImagesDir: *imagesDir,
 		TFTPDir:   *tftpDir,
 		StateDir:  *stateDir,
+		RelayURL:  strings.TrimRight(*relayURL, "/"),
 		Interval:  *interval,
 	}
 	s := newSite(c, *dryRun)

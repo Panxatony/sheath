@@ -159,6 +159,11 @@ func (s *site) fetchImage(url, path, sum string) error {
 
 // ensureBoot keeps the netboot payload in the TFTP root current. Without it a
 // site would serve yesterday's installer to a blade booting today.
+//
+// What is compared is not the file — the file is rewritten after it arrives,
+// see below — but the checksum it had upstream, kept beside it. That is the
+// only thing both ends can agree on, and it is what this site reports as the
+// installer it serves.
 func (s *site) ensureBoot(d *desired) error {
 	if d.Boot.BootImg == "" {
 		return nil
@@ -167,11 +172,12 @@ func (s *site) ensureBoot(d *desired) error {
 		return err
 	}
 	path := filepath.Join(s.cfg.TFTPDir, "boot.img")
+	_, missing := os.Stat(path)
 	if d.Boot.SHA256 != "" {
-		if ok, err := s.haveImage(path, d.Boot.SHA256, 0); err == nil && ok {
+		if s.payloadHeld() == d.Boot.SHA256 && missing == nil {
 			return nil
 		}
-	} else if _, err := os.Stat(path); err == nil {
+	} else if missing == nil {
 		// Without a checksum there is nothing to compare against, so an
 		// existing payload is left alone rather than re-fetched every pass.
 		return nil
@@ -183,8 +189,74 @@ func (s *site) ensureBoot(d *desired) error {
 	if err := s.fetchImage(d.Boot.BootImg, path, d.Boot.SHA256); err != nil {
 		return err
 	}
-	s.note("", "info", "netboot payload updated")
+	if err := os.WriteFile(path+".upstream", []byte(d.Boot.SHA256+"\n"), 0o644); err != nil {
+		log.Printf("boot payload: stamp not written: %v", err)
+	}
+	if err := s.aimPayloadHere(path); err != nil {
+		log.Printf("boot payload: %v", err)
+		s.note("", "warn", "netboot payload not aimed at this site: "+err.Error())
+	}
+	s.note("", "info", "netboot payload updated to "+short(d.Boot.SHA256))
 	return nil
+}
+
+// aimPayloadHere rewrites the one line in the payload that names a server.
+// The centre builds the payload and writes its own address into it, which is
+// right for exactly one site: everywhere else a blade would be told to fetch
+// hundreds of megabytes across the link that may be the very thing that is
+// down, when the answer is in the same room.
+func (s *site) aimPayloadHere(path string) error {
+	if s.cfg.RelayURL == "" {
+		log.Printf("boot payload: no -relay-url, leaving the server address as built")
+		return nil
+	}
+	line, err := readFATFile(path, "cmdline.txt")
+	if err != nil {
+		return fmt.Errorf("cmdline.txt: %w", err)
+	}
+	out := replaceServer(line, s.cfg.RelayURL)
+	if strings.TrimSpace(out) == strings.TrimSpace(line) {
+		return nil
+	}
+	if err := patchCmdline(path, out); err != nil {
+		return err
+	}
+	log.Printf("boot payload: blades here are pointed at %s", s.cfg.RelayURL)
+	return nil
+}
+
+// replaceServer swaps the value of sheath_server= and leaves everything else
+// on the line alone — the console settings are not ours to decide.
+func replaceServer(line, url string) string {
+	fields := strings.Fields(strings.TrimSpace(line))
+	found := false
+	for i, f := range fields {
+		if strings.HasPrefix(f, "sheath_server=") {
+			fields[i] = "sheath_server=" + url
+			found = true
+		}
+	}
+	if !found {
+		fields = append(fields, "sheath_server="+url)
+	}
+	return strings.Join(fields, " ")
+}
+
+// payloadHeld is the upstream checksum of the payload this site serves, or
+// empty when there is none to speak of.
+func (s *site) payloadHeld() string {
+	b, err := os.ReadFile(filepath.Join(s.cfg.TFTPDir, "boot.img.upstream"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func short(sum string) string {
+	if len(sum) > 8 {
+		return sum[:8]
+	}
+	return sum
 }
 
 func fileSHA256(path string) (string, error) {

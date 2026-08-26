@@ -397,6 +397,8 @@ type siteGroup struct {
 	Seen   string // how long ago it last spoke
 	Stock  string // what it holds of the images its blades need
 	SkLED  string
+	Pay    string // said only when it is not the payload the centre has
+	PayLED string
 	Racks  []rackView
 	Blades int
 	Used   int
@@ -498,19 +500,29 @@ func (a *App) groupBySite(views []rackView, blades []Blade, l Lang) []siteGroup 
 	}
 	byID := map[int64]*siteGroup{}
 	out := make([]siteGroup, 0, len(sites))
+	centre := a.payload().SHA256
 	for _, st := range sites {
 		key, led, seen := siteHealth(l, st)
 		sk, skLED := stockText(l, stock[st.ID])
+		// Silence where it matches: a header that repeats what is expected
+		// teaches people to stop reading it.
+		payKey, payLED := payloadState(centre, st.Payload)
+		payText := ""
+		if payLED != "" && payLED != "ok" {
+			payText = T(l, payKey)
+		}
 		out = append(out, siteGroup{
-			Site:  st,
-			Local: st.ID == local,
-			Net:   st.NetBase + ".0/24",
-			Pool:  fmt.Sprintf(".%d–.%d", st.PoolFrom, st.PoolTo),
-			State: T(l, key),
-			SLED:  led,
-			Seen:  seen,
-			Stock: sk,
-			SkLED: skLED,
+			Site:   st,
+			Local:  st.ID == local,
+			Net:    st.NetBase + ".0/24",
+			Pool:   fmt.Sprintf(".%d–.%d", st.PoolFrom, st.PoolTo),
+			State:  T(l, key),
+			SLED:   led,
+			Seen:   seen,
+			Stock:  sk,
+			SkLED:  skLED,
+			Pay:    payText,
+			PayLED: payLED,
 		})
 	}
 	for i := range out {
@@ -1709,6 +1721,7 @@ const headHTML = `<!doctype html><html lang="{{.L}}"><head><meta charset="utf-8"
 const navBar = `<nav class="nav" aria-label="{{t .L "nav.label"}}">
   <a href="/"{{if eq .Path "/"}} class="here" aria-current="page"{{end}}>{{t .L "nav.overview"}}</a>
   <a href="/map"{{if eq .Path "/map"}} class="here" aria-current="page"{{end}}>{{t .L "nav.map"}}</a>
+  <a href="/inventory"{{if eq .Path "/inventory"}} class="here" aria-current="page"{{end}}>{{t .L "inv.title"}}</a>
   <a href="/images"{{if eq .Path "/images"}} class="here" aria-current="page"{{end}}>{{t .L "img.title"}}</a>
   <a href="/settings"{{if eq .Path "/settings"}} class="here" aria-current="page"{{end}}>{{t .L "set.title"}}</a>
   {{if .LocalSite}}<a href="/sites/{{.LocalSite}}"{{if hasPrefix .Path "/sites/"}} class="here" aria-current="page"{{end}}>{{t .L "site.title"}}</a>{{end}}
@@ -1747,7 +1760,8 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
 <div class="card"><div class="card-head">
   <h2><a href="/sites/{{.Site.ID}}">{{.Site.Name}}</a>{{if .Local}} <span class="chip ok">{{t $l "site.here"}}</span>{{end}}
     <span class="chip {{.SLED}}">{{.State}}{{if .Seen}} · {{.Seen}}{{end}}</span>
-    <span class="chip {{.SkLED}}">{{.Stock}}</span></h2>
+    <span class="chip {{.SkLED}}">{{.Stock}}</span>
+    {{if .Pay}}<span class="chip {{.PayLED}}">{{.Pay}}</span>{{end}}</h2>
   <span class="tag">{{.Net}} · {{t $l "site.pool"}} {{.Pool}}{{if .Site.Location}} · {{.Site.Location}}{{end}}</span></div>
 {{if .Racks}}
 <div class="body"><div class="grid">
@@ -1820,7 +1834,8 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
           <td class="mono num">{{index $counts .Site.ID}}</td>
           <td><span class="chip {{.SkLED}}">{{.Stock}}</span></td>
           <td><span class="chip {{.SLED}}">{{.State}}</span>
-            {{if .Seen}}<div class="mono sub2">{{.Seen}}</div>{{end}}</td>
+            {{if .Seen}}<div class="mono sub2">{{.Seen}}</div>{{end}}
+            {{if .Pay}}<div><span class="chip {{.PayLED}}">{{.Pay}}</span></div>{{end}}</td>
           <td class="right">
             <details class="menu"><summary title="{{t $l "menu.open"}}">···</summary>
               <div class="menu-panel">
@@ -2642,8 +2657,15 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, led, seenAt := siteHealth(l, *st)
+	centre := a.payload()
+	payKey, payLED := payloadState(centre.SHA256, st.Payload)
 	msg, errMsg := flash(r)
 	render(w, siteTmpl, map[string]any{
+		"Pay":       T(l, payKey),
+		"PayLED":    payLED,
+		"PayHere":   shortOr(st.Payload),
+		"PayCentre": shortOr(centre.SHA256),
+		"SiteVer":   st.SiteVersion,
 		"L":         l,
 		"Path":      "/sites/" + strconv.FormatInt(id, 10),
 		"LocalSite": a.localSiteID(),
@@ -2669,6 +2691,8 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 // human renders a byte count the way someone reads it out loud.
 func human(n int64) string {
 	switch {
+	case n >= 1<<40:
+		return fmt.Sprintf("%.1f TB", float64(n)/float64(1<<40))
 	case n >= 1<<30:
 		return fmt.Sprintf("%.1f GB", float64(n)/float64(1<<30))
 	case n >= 1<<20:
@@ -2697,6 +2721,19 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
 {{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
 {{if not .HasToken}}<div class="bad">{{t .L "site.notoken"}}</div>{{end}}
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "pay.title"}}</h2>
+    <span class="chip {{.PayLED}}">{{.Pay}}</span></div>
+  <div class="body">
+    <div class="meta">
+      <span>{{t .L "pay.here"}} <b class="mono">{{.PayHere}}</b></span>
+      <span>{{t .L "pay.centre"}} <b class="mono">{{.PayCentre}}</b></span>
+      {{if .SiteVer}}<span>sheath-site <b class="mono">{{.SiteVer}}</b></span>{{end}}
+    </div>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "pay.hint"}}</p>
+  </div>
+</div>
 
 <div class="card">
   <div class="card-head"><h2>{{t .L "stock.detail"}}</h2>
@@ -3434,3 +3471,102 @@ func (a *App) hUINotifySave(w http.ResponseWriter, r *http.Request) {
 	a.logEvent("", "info", "test notification sent to "+conf.To)
 	redirectMsg(w, r, "/settings", "msg", fmt.Sprintf(T(l, "nf.sent"), conf.To))
 }
+
+// shortOr renders a checksum the way a person compares two of them: the first
+// eight characters, or a word saying there is nothing to compare.
+func shortOr(sum string) string {
+	if sum == "" {
+		return "—"
+	}
+	if len(sum) > 8 {
+		return sum[:8]
+	}
+	return sum
+}
+
+// ── Inventory ────────────────────────────────────────────────────────
+
+func (a *App) hInventory(w http.ResponseWriter, r *http.Request) {
+	l := a.resolveLang(w, r)
+	rows, sum, err := a.inventory(l)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	unknown := ""
+	if sum.Unknown > 0 {
+		unknown = fmt.Sprintf(T(l, "inv.unknown"), sum.Unknown)
+	}
+	msg, errMsg := flash(r)
+	render(w, inventoryTmpl, map[string]any{
+		"L": l, "Path": "/inventory", "LocalSite": a.localSiteID(),
+		"Rows": rows, "Sum": sum, "Unknown": unknown,
+		"Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
+	})
+}
+
+var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(headHTML + `
+<div class="wrap">
+<header class="top">` + brandBar + `
+<div class="pagehead">
+  <h1>{{t .L "inv.title"}}</h1>
+  <p class="sub">{{t .L "inv.lead"}}</p>
+</div>
+<div class="meta">
+  <span>{{t .L "meta.blades"}} <b>{{.Sum.Blades}}</b></span>
+  <span>{{t .L "inv.ram"}} <b>{{.Sum.RAMTotal}}</b></span>
+  {{if .Sum.NVMe}}<span>{{t .L "inv.nvme"}} <b>{{.Sum.NVMe}}</b></span>{{end}}
+  {{if .Unknown}}<span>{{.Unknown}}</span>{{end}}
+</div>
+</header>
+
+{{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
+{{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
+
+{{if .Sum.Boards}}
+<div class="card">
+  <div class="card-head"><h2>{{t .L "inv.sum"}}</h2></div>
+  <div class="body"><div class="meta">
+    {{range .Sum.Boards}}<span>{{.}}</span>{{end}}
+  </div></div>
+</div>
+{{end}}
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "inv.title"}}</h2>
+    <span class="tag">{{t .L "inv.revhint"}}</span></div>
+  {{if .Rows}}
+  <table class="tbl">
+    <thead><tr>
+      <th>{{t .L "inv.blade"}}</th><th>{{t .L "inv.where"}}</th>
+      <th>{{t .L "inv.board"}}</th><th>{{t .L "inv.ram"}}</th>
+      <th>{{t .L "inv.cpu"}}</th><th>{{t .L "inv.storage"}}</th>
+      <th>{{t .L "inv.running"}}</th>
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td><span class="dot {{.LED}}"></span> <b>{{if .Hostname}}{{.Hostname}}{{else}}{{.Serial}}{{end}}</b>
+          <div class="mono sub2">{{.Serial}}{{if .IP}} · {{.IP}}{{end}}</div></td>
+        <td>{{.Site}}
+          <div class="mono sub2">{{.Rack}}{{if .Slot}} · {{t $.L "th.slot"}} {{.Slot}}{{end}}</div></td>
+        <td>{{if .Missing}}<span class="hint">{{t $.L "inv.none"}}</span>{{else}}{{.Board}}
+          <div class="mono sub2">{{if .Rev}}{{.Rev}}{{end}}{{if .Maker}} · {{.Maker}}{{end}}{{if .Radio}} · {{.Radio}}{{end}}</div>{{end}}</td>
+        <td class="num">{{.RAM}}</td>
+        <td>{{if .SoC}}{{.SoC}}{{end}}
+          <div class="mono sub2">{{if .Cores}}{{.Cores}} × {{end}}{{.MHz}}</div></td>
+        <td class="mono">{{if .NVMe}}{{.NVMe}}{{end}}
+          {{if .EMMC}}<div class="sub2">{{.EMMC}}</div>{{end}}</td>
+        <td>{{.OS}}
+          <div class="mono sub2">{{.Kernel}}{{if .Seen}} · {{.Seen}}{{end}}</div></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="body"><p class="hint">{{t .L "inv.empty"}}</p></div>{{end}}
+</div>
+
+<footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
+<span>{{t .L "foot.api"}}</span></footer>
+</div></body></html>`))

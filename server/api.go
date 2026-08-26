@@ -194,6 +194,7 @@ type SiteImage struct {
 type SiteBoot struct {
 	BootImg    string `json:"boot_img"`
 	SHA256     string `json:"sha256"`
+	Version    string `json:"version"`
 	CmdlineURL string `json:"cmdline_url"`
 	ServerURL  string `json:"server_url"`
 }
@@ -259,8 +260,11 @@ func (a *App) siteDesired(id int64) (*SiteDesired, error) {
 		})
 	}
 
+	pay := a.payload()
 	out.Boot = SiteBoot{
 		BootImg:    a.baseURL + "/boot/boot.img",
+		SHA256:     pay.SHA256,
+		Version:    pay.Version,
 		CmdlineURL: a.baseURL + "/boot/cmdline.txt",
 		ServerURL:  a.baseURL,
 	}
@@ -383,11 +387,15 @@ func (a *App) hSiteStatus(w http.ResponseWriter, r *http.Request) {
 		Images    int    `json:"images"`
 		Note      string `json:"note"`
 		DnsmasqOK bool   `json:"dnsmasq_ok"`
+		// The checksum of the netboot payload this site serves. A site older
+		// than this field says nothing, and nothing is what is then shown.
+		Payload string `json:"payload"`
 		// What the site holds on its own disk, which is not the same thing as
 		// what the catalogue says exists.
 		Stock []SiteImageState `json:"stock"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
+	a.recordSiteSelf(id, strings.TrimSpace(in.Payload), in.Version)
 	if in.Stock != nil {
 		a.recordSiteImages(id, in.Stock)
 	}

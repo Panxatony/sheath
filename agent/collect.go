@@ -54,6 +54,12 @@ func collectFacts() map[string]any {
 		// configuration.
 		"reboot_required": rebootRequired(),
 	}
+	// What the module is, as opposed to what runs on it. It does not change
+	// while the blade is up, but it is collected with everything else: a
+	// second path that runs rarely is a second path that rots quietly.
+	for k, v := range hardware() {
+		f[k] = v
+	}
 	return f
 }
 

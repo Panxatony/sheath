@@ -24,7 +24,11 @@ type App struct {
 	backupDir  string
 	backupAt   string
 	backupKeep int
-	sess       *sessions
+	tftpDir    string
+
+	// The netboot payload's checksum, worked out once per rebuild
+	pay  payloadCache
+	sess *sessions
 
 	// Fetching and preparing images, one at a time
 	imgQ imageQueue
@@ -74,7 +78,7 @@ func main() {
 
 	app := &App{db: db, imagesDir: *imagesDir, toolsDir: *toolsDir, rootDir: *rootDir,
 		backupDir: *backupDir, backupAt: *backupAt, backupKeep: *backupKeep,
-		sess: newSessions()}
+		tftpDir: *tftpDir, sess: newSessions()}
 
 	if *netBase != "" {
 		if err := app.setSetting("net_base", *netBase); err != nil {
@@ -136,6 +140,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/images", app.requireAdmin(app.hImagesList))
 	mux.HandleFunc("POST /api/v1/images", app.requireAdmin(app.hImagesCreate))
 	mux.HandleFunc("POST /api/v1/backup", app.requireAdmin(app.hBackupNow))
+	mux.HandleFunc("GET /api/v1/payload", app.requireAdmin(app.hPayload))
 	mux.HandleFunc("POST /api/v1/images/fetch", app.requireAdmin(app.hImagesFetch))
 	mux.HandleFunc("DELETE /api/v1/images/{id}", app.requireAdmin(app.hImageDelete))
 
@@ -188,6 +193,8 @@ func main() {
 	mux.HandleFunc("POST /settings/backup", app.requireUI(app.hUIBackupNow))
 	mux.HandleFunc("POST /settings/notify", app.requireUI(app.hUINotifySave))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
+	mux.HandleFunc("GET /inventory", app.requireUI(app.hInventory))
+	mux.HandleFunc("GET /api/v1/inventory", app.requireAdmin(app.hInventoryAPI))
 	mux.HandleFunc("GET /images", app.requireUI(app.hImagesPage))
 	mux.HandleFunc("POST /images/add", app.requireUI(app.hUIImageAdd))
 	mux.HandleFunc("POST /images/{id}/remove", app.requireUI(app.hUIImageRemove))
