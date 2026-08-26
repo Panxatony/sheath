@@ -412,7 +412,9 @@ type EventRow struct {
 }
 
 // rackEvents returns the most recent activities of the blades in one
-// BladeRunner, newest first. Events without a serial (creating the
+// BladeRunner, newest first. By time and not by row number: a site buffers
+// events while the centre is unreachable and delivers them afterwards, so a
+// row written last is not necessarily a thing that happened last. Events without a serial (creating the
 // BladeRunner itself) are deliberately left out: this is the log of the
 // blades, not of the enclosure.
 func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
@@ -421,7 +423,7 @@ func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
 		  FROM events e
 		  JOIN blades b ON b.serial = e.serial
 		 WHERE b.rack_id = ?
-		 ORDER BY e.id DESC
+		 ORDER BY e.ts DESC, e.id DESC
 		 LIMIT ?`, rackID, limit)
 	if err != nil {
 		return nil, err

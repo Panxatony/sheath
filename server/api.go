@@ -1433,7 +1433,7 @@ func (a *App) hHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) hEvents(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(`SELECT ts,serial,level,msg FROM events ORDER BY id DESC LIMIT 200`)
+	rows, err := a.db.Query(`SELECT ts,serial,level,msg FROM events ORDER BY ts DESC, id DESC LIMIT 200`)
 	if err != nil {
 		fail(w, 500, "%v", err)
 		return

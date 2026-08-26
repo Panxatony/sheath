@@ -176,10 +176,13 @@ var recipes = []recipe{
 		Note: "Brings cloud-init and SSH; the Raspberry Pi kernel applies device tree overlays, so the smart fan reports.",
 	},
 	{
-		Name: "DietPi v10 (arm64)", Match: []string{"dietpi"},
+		// Not "v10": the recipe applies to every DietPi, and labelling a
+		// Bookworm image that has sat in the catalogue for weeks with the
+		// current release would be a quiet untruth.
+		Name: "DietPi (arm64)", Match: []string{"dietpi"},
 		OSID: "dietpi", Kernel: "downstream", MinDisk: 4 << 30,
 		IDHint: "dietpi-arm64", Release: true,
-		Note: "Configures itself at first boot — apt in a chroot would run before that and confuse it, so nothing is installed here.",
+		Note: "v10 Trixie supported. Configures itself at first boot — apt in a chroot would run before that and confuse it, so nothing is installed here.",
 	},
 	{
 		Name: "Debian 13 Trixie (arm64)", Match: []string{"debian", "13"},

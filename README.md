@@ -6,6 +6,23 @@ Slot in an empty blade, pick an image in the interface — Sheath does the rest:
 netboot, write the image to the NVMe, seed credentials and the agent, hand out a
 fixed address, and watch it from then on.
 
+## What it looks like
+
+The overview: every site, every BladeRunner, every slot as one square — green
+where a blade is in sync, amber where something wants looking at, hatched where
+the slot is empty.
+
+![The overview, with two sites and three BladeRunners](docs/img/overview.png)
+
+One BladeRunner: what sits in each slot, which distribution it runs, how warm it
+is, what its fan is doing, and underneath it what the blades in this enclosure
+have been up to.
+
+![A BladeRunner with four blades and its activity log](docs/img/bladerunner.png)
+
+The screenshots come from a demonstration instance with invented blades — the
+addresses and serial numbers in them belong to nothing.
+
 ## What it does
 
 | Pillar | |
@@ -29,6 +46,7 @@ agent/       Go, runs on every blade                     → /usr/local/bin/shea
 installer/   Go, runs in the mini OS during netboot      → inside boot.img
 tools/       mirror, prepare and publish images; build the netboot payload
 assets/      Mark (SVG)
+docs/        architecture, installation, screenshots
 ```
 
 Alongside those: `docs/ARCHITECTURE.md` (why it is built this way) and `docs/INSTALLATION.md`
