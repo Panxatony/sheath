@@ -2,6 +2,14 @@
 
 Management for [Compute Blades](https://docs.computeblade.com/) in BladeRunner chassis.
 
+> **How this was built** — the code in this repository was written by
+> [Claude](https://claude.com/claude-code) (Anthropic), working from the ideas,
+> the design decisions and the review of [Panxatony](https://github.com/Panxatony),
+> whose rack it runs on. What to build, which trade-offs to accept and what
+> counts as finished came from there; so did every correction that mattered.
+> Nothing here is a sketch: each part was tried on the hardware before it was
+> called done.
+
 Slot in an empty blade, pick an image in the interface — Sheath does the rest:
 netboot, write the image to the NVMe, seed credentials and the agent, hand out a
 fixed address, and watch it from then on.
