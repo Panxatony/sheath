@@ -1355,20 +1355,22 @@ func stageLED(st string) string {
 
 // ── Templates ────────────────────────────────────────────────────────
 
-// markSVG is the mark: a sheath with a blade in it — tang and guard above,
-// the scabbard below, and three cut-outs across it that read as slots, the
-// same way a BladeRunner does seen from the front. One path with
-// fill-rule="evenodd", so the slots are holes rather than painted shapes:
-// the mark then sits on any background and takes the text colour, dark mode
-// included.
+// markSVG is the mark: the scabbard itself, worn at an angle — throat to the
+// upper right, tip to the lower left, the way a sheath hangs rather than the
+// way a diagram stands. Three cut-outs across it read as slots, the way a
+// BladeRunner does seen from the front. The blade is deliberately absent: the
+// sheath is the thing that holds, and what it holds is somebody else's.
+//
+// An earlier version drew grip and crossguard too, which at 28 pixels beside
+// the wordmark reads as a screw — and 28 pixels is the size this has to work
+// at. One path with fill-rule="evenodd", so the slots are holes: no
+// background of its own, and currentColor carries it into dark mode.
 const markSVG = `<svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
-	`<path fill="currentColor" fill-rule="evenodd" d="` +
-	`M10.9 1.6 H13.1 V5.2 H16.4 V7.2 H13.1 V8.6 H16.9 L18.4 10.6 ` +
-	`V19.2 L15.6 22.4 H8.4 L5.6 19.2 V10.6 L7.1 8.6 H10.9 V7.2 ` +
-	`H7.6 V5.2 H10.9 Z ` +
-	`M8.2 11.6 H15.8 V13.2 H8.2 Z ` +
-	`M8.2 14.5 H15.8 V16.1 H8.2 Z ` +
-	`M8.2 17.4 H15.8 V19 H8.2 Z"/></svg>`
+	`<path fill="currentColor" fill-rule="evenodd" transform="rotate(45 12 12)" d="` +
+	`M6.2 2.6 H17.8 V6 H16.3 V17.3 L12 22.6 L7.7 17.3 V6 H6.2 Z ` +
+	`M9.4 8 H14.6 V9.9 H9.4 Z ` +
+	`M9.4 11.2 H14.6 V13.1 H9.4 Z ` +
+	`M9.4 14.4 H14.6 V16.3 H9.4 Z"/></svg>`
 
 var tmplFuncs = template.FuncMap{
 	"mark": func() template.HTML { return template.HTML(markSVG) },
@@ -1668,7 +1670,7 @@ const topRight = `<div class="topright">
 var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="wrap">
 <header class="top"><div class="topbar"><div>
-  <h1 class="brand">{{mark}}<span>Rook<em>ery</em></span></h1>
+  <h1 class="brand">{{mark}}<span>She<em>ath</em></span></h1>
   <p class="sub">{{t .L "sub.network" .NetBase .PoolFrom .PoolTo}}</p>
 </div>` + topRight + `</div>
 <div class="meta"><span>{{t .L "meta.racks"}} <b>{{len .Racks}}</b></span>
@@ -2107,7 +2109,7 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
 var loginTmpl = template.Must(template.New("login").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="signin"><div class="signin-box">
 <header class="top"><div class="topbar"><div>
-  <h1 class="brand">{{mark}}<span>Rook<em>ery</em></span></h1>
+  <h1 class="brand">{{mark}}<span>She<em>ath</em></span></h1>
   <p class="sub">{{t .L "login.lead"}}</p>
 </div><a class="langlink" href="/lang/{{otherLang .L}}?next={{.Path | urlquery}}"
    hreflang="{{otherLang .L}}">{{langName (otherLang .L)}}</a></div></header>

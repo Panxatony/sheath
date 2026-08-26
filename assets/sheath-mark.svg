@@ -1,21 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Sheath">
   <title>Sheath</title>
   <!--
-    A sheathed blade: grip and crossguard stand clear at the top, then the
-    throat of the scabbard, then the body tapering to a point. The three
-    cut-outs across the body are the slots — the same reading as a
-    BladeRunner seen from the front.
+    The scabbard itself, worn at an angle: throat to the upper right, tip to
+    the lower left, the way a sheath hangs rather than the way a diagram
+    stands. Three cut-outs across it read as slots — a BladeRunner seen from the
+    front. The blade is deliberately absent; the sheath is the thing that
+    holds, and what it holds is what someone else supplies.
 
-    One path with fill-rule="evenodd", so the slots are real holes: the mark
-    sits on any background, takes the text colour, and needs no background of
-    its own.
+    An earlier version drew grip and crossguard as well. At 28 pixels beside
+    the wordmark that reads as a screw, which is the size the mark actually
+    has to work at.
+
+    One path with fill-rule="evenodd", so the slots are real holes: no
+    background of its own, and currentColor carries it into dark mode.
   -->
-  <path fill="currentColor" fill-rule="evenodd" d="
-    M11.2 1.4 H12.8 V4.3 H16.5 V5.9 H12.8 V7.4 H16.3 V9.5 H15.1
-    V18.4 L12 22.6 L8.9 18.4 V9.5 H7.7 V7.4 H11.2 V5.9 H7.5 V4.3
-    H11.2 Z
-    M10.1 11.2 H13.9 V12.7 H10.1 Z
-    M10.1 13.9 H13.9 V15.4 H10.1 Z
-    M10.1 16.6 H13.9 V18.1 H10.1 Z
+  <path fill="currentColor" fill-rule="evenodd" transform="rotate(45 12 12)" d="
+    M6.2 2.6 H17.8 V6 H16.3 V17.3 L12 22.6 L7.7 17.3 V6 H6.2 Z
+    M9.4 8 H14.6 V9.9 H9.4 Z
+    M9.4 11.2 H14.6 V13.1 H9.4 Z
+    M9.4 14.4 H14.6 V16.3 H9.4 Z
   "/>
 </svg>
