@@ -402,13 +402,16 @@ func (a *App) logEvent(serial, level, msg string) {
 // EventRow is one line of the activity log, already joined with the blade it
 // belongs to — the log is read per BladeRunner, and a bare serial number says
 // nothing to someone standing in front of the rack.
+// EventRow carries json tags because it is served: /api/v1/events handed out
+// TS, Serial, Level, Msg while every other endpoint speaks snake_case, and a
+// client cannot be expected to guess which of the two a field will be in.
 type EventRow struct {
-	TS       string
-	Serial   string
-	Level    string
-	Msg      string
-	Hostname string
-	Slot     *int
+	TS       string `json:"ts"`
+	Serial   string `json:"serial"`
+	Level    string `json:"level"`
+	Msg      string `json:"msg"`
+	Hostname string `json:"hostname,omitempty"`
+	Slot     *int   `json:"slot,omitempty"`
 }
 
 // rackEvents returns the most recent activities of the blades in one

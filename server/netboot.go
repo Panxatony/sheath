@@ -213,7 +213,7 @@ func (a *App) handleLogLine(line string) {
 		return
 	}
 	if m := reTFTPFail.FindStringSubmatch(line); m != nil {
-		a.touchNetbootByIP(m[2], "", "", "TFTP-Uebertragung abgebrochen: "+shortFile(m[1]))
+		a.touchNetbootByIP(m[2], "", "", "TFTP transfer aborted: "+shortFile(m[1]))
 		return
 	}
 }

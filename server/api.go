@@ -672,7 +672,7 @@ func (a *App) hBladeUpdate(w http.ResponseWriter, r *http.Request) {
 		groups_json=?,state=? WHERE serial=?`,
 		rackID, slot, host, mac, img, string(gj), state, serial)
 	if err != nil {
-		fail(w, 409, "Aktualisierung fehlgeschlagen: %v", err)
+		fail(w, 409, "update failed: %v", err)
 		return
 	}
 	sync, _ := a.syncDHCP()
@@ -755,7 +755,7 @@ func (a *App) hEnroll(w http.ResponseWriter, r *http.Request) {
 		_, err = a.db.Exec(`INSERT INTO blades(serial,short_serial,mac,variant,state,token,created)
 			VALUES(?,?,?,?,'new',?,?)`, in.Serial, short, in.MAC, in.Variant, tok, now())
 		if err != nil {
-			fail(w, 500, "Enrollment fehlgeschlagen: %v", err)
+			fail(w, 500, "enrollment failed: %v", err)
 			return
 		}
 		a.logEvent(in.Serial, "info", "new blade enrolled (MAC "+in.MAC+")")
@@ -1439,10 +1439,9 @@ func (a *App) hEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	type ev struct{ TS, Serial, Level, Msg string }
-	out := []ev{}
+	out := []EventRow{}
 	for rows.Next() {
-		var e ev
+		var e EventRow
 		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg); err == nil {
 			out = append(out, e)
 		}
