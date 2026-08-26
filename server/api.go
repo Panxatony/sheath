@@ -1313,6 +1313,54 @@ func (a *App) hConfigGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, a.configFor(r.PathValue("scope")))
 }
 
+// hConfigPatch merges into a scope instead of replacing it. PUT replaces,
+// which is the honest meaning of PUT and exactly the wrong tool for changing
+// one setting: a request carrying only {"install":{"after":"reboot"}} once
+// wiped the SSH keys, the boot configuration and the binaries of an entire
+// installation. Merging is one level deep — enough for the sections this
+// configuration has, and shallow enough that replacing a list still means
+// replacing it.
+func (a *App) hConfigPatch(w http.ResponseWriter, r *http.Request) {
+	scope := r.PathValue("scope")
+	var in map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, 400, "invalid JSON: %v", err)
+		return
+	}
+	cur := a.configFor(scope)
+	for k, v := range in {
+		// A null removes the key, which is the only way to say "unset" in
+		// JSON without a second verb.
+		if v == nil {
+			delete(cur, k)
+			continue
+		}
+		if sub, ok := v.(map[string]any); ok {
+			if old, ok2 := cur[k].(map[string]any); ok2 {
+				for sk, sv := range sub {
+					if sv == nil {
+						delete(old, sk)
+					} else {
+						old[sk] = sv
+					}
+				}
+				cur[k] = old
+				continue
+			}
+		}
+		cur[k] = v
+	}
+	raw, _ := json.Marshal(cur)
+	if _, err := a.db.Exec(`INSERT INTO configs(scope,body,updated) VALUES(?,?,?)
+		ON CONFLICT(scope) DO UPDATE SET body=excluded.body,updated=excluded.updated`,
+		scope, string(raw), now()); err != nil {
+		fail(w, 500, "%v", err)
+		return
+	}
+	a.logEvent("", "info", "configuration changed: "+scope)
+	writeJSON(w, 200, cur)
+}
+
 func (a *App) hConfigPut(w http.ResponseWriter, r *http.Request) {
 	scope := r.PathValue("scope")
 	var body map[string]any

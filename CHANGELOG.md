@@ -6,6 +6,26 @@ on `main`.
 ## Unreleased
 
 ### Added
+- A settings page for the two sections a person actually turns knobs in: what
+  the agent does on a blade (interval, jitter, allowed commands, restarting
+  itself after a boot configuration change, and the window for it) and how an
+  installation is carried out (target, what happens when written, checksum
+  policy, and each seeding step). It merges into the global desired state and
+  deliberately does not touch keys, files, units or binaries — a form that has
+  never seen them must not be able to remove them.
+- `PATCH /api/v1/config/{scope}` merges one level deep. `PUT` still replaces,
+  which is what PUT means and exactly the wrong tool for changing one setting:
+  a request carrying only `{"install":{"after":"reboot"}}` once emptied an
+  installation's SSH keys, boot configuration and binaries.
+
+### Fixed
+- "Fan stopped" needed three things to be true and checked one. It now asks
+  whether the unit measures at all, whether the fan was asked to spin, and
+  whether it has had time to answer — a blade three minutes into its first
+  boot reported 0 RPM at 0 per cent while its fan ran at 3490, and was painted
+  critical for it.
+
+### Added
 - The site serves images from its own cache: when the centre's job names an
   image the site already holds, the relay rewrites the URL to itself. The
   bytes are here, the site link may be slow — and, as one afternoon showed,

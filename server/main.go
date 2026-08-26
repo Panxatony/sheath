@@ -121,6 +121,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/v1/config/{scope}", app.requireAdmin(app.hConfigGet))
 	mux.HandleFunc("PUT /api/v1/config/{scope}", app.requireAdmin(app.hConfigPut))
+	mux.HandleFunc("PATCH /api/v1/config/{scope}", app.requireAdmin(app.hConfigPatch))
 
 	mux.HandleFunc("POST /api/v1/dhcp/sync", app.requireAdmin(app.hDHCPSync))
 	mux.HandleFunc("GET /api/v1/netboot", app.requireAdmin(app.hNetbootList))
@@ -162,6 +163,8 @@ func main() {
 	mux.HandleFunc("POST /logout", app.hLogout)
 
 	mux.HandleFunc("GET /", app.requireUI(app.hUI))
+	mux.HandleFunc("GET /settings", app.requireUI(app.hSettings))
+	mux.HandleFunc("POST /settings", app.requireUI(app.hSettingsSave))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
 	mux.HandleFunc("GET /sites/{id}", app.requireUI(app.hSitePage))
 	mux.HandleFunc("GET /bladerunners/{id}", app.requireUI(app.hRackPage))

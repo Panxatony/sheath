@@ -460,11 +460,21 @@ func evalHealthWith(b *Blade, p Policy) (healthLevel, []error) {
 	if b, ok := h["throttled_now"].(bool); ok && b {
 		raise(hWarn, me("health.throttled"))
 	}
-	// Zero RPM only means a standing fan on a smart fan unit, which measures
-	// and reports. A standard unit has no tacho to report from: there 0 is
-	// "not measurable", and calling that critical paints a healthy blade red.
+	// A stopped fan means: it was asked to spin, has had time to, and is not
+	// spinning. All three parts matter.
+	//
+	// Only a smart fan unit measures at all — a standard one has no tacho and
+	// reports 0 always, which is "not measurable" and not a fault. A unit
+	// asked for 0 per cent is idle by instruction. And in the first minutes
+	// after a boot the unit has often not answered yet: a freshly started
+	// blade briefly reports 0 RPM at 0 per cent, which once painted a
+	// perfectly healthy blade critical while its fan was running at 3490.
 	if v, ok := num(h["fan_rpm"]); ok && v == 0 {
-		if unit, _ := h["fan_unit"].(string); unit == "smart" {
+		unit, _ := h["fan_unit"].(string)
+		want, _ := num(h["fan_percent"])
+		up, hasUp := num(h["uptime_s"])
+		settled := !hasUp || up > 180
+		if unit == "smart" && want > 0 && settled {
 			raise(hCrit, me("health.fanstop"))
 		}
 	}

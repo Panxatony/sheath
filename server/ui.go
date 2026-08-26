@@ -1551,6 +1551,9 @@ svg.topo .cell.ident{fill:var(--ident)}
    still reads in both themes. */
 a.brand{display:flex;align-items:center;gap:.5rem;text-decoration:none;color:inherit}
 a.brand:hover{color:var(--accent-ink)}
+label.check{display:flex;align-items:center;gap:.5rem;font:400 .95rem/1.4 inherit;
+  text-transform:none;letter-spacing:0;color:var(--ink)}
+label.check input{width:auto;margin:0}
 .pagehead{margin:1.1rem 0 0}
 .pagehead h1{margin:0}
 .pagehead .sub{margin:.35rem 0 0}
@@ -1693,6 +1696,7 @@ const headHTML = `<!doctype html><html lang="{{.L}}"><head><meta charset="utf-8"
 const navBar = `<nav class="nav" aria-label="{{t .L "nav.label"}}">
   <a href="/"{{if eq .Path "/"}} class="here" aria-current="page"{{end}}>{{t .L "nav.overview"}}</a>
   <a href="/map"{{if eq .Path "/map"}} class="here" aria-current="page"{{end}}>{{t .L "nav.map"}}</a>
+  <a href="/settings"{{if eq .Path "/settings"}} class="here" aria-current="page"{{end}}>{{t .L "set.title"}}</a>
   {{if .LocalSite}}<a href="/sites/{{.LocalSite}}"{{if hasPrefix .Path "/sites/"}} class="here" aria-current="page"{{end}}>{{t .L "site.title"}}</a>{{end}}
 </nav>`
 
@@ -2782,4 +2786,266 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
 <span>{{t .L "site.one"}} {{.S.ID}}</span></footer>
+</div></body></html>`))
+
+// ── Settings ─────────────────────────────────────────────────────────
+//
+// The two sections a person actually turns knobs in: what the agent does on a
+// blade, and how an installation is carried out. Everything else in the
+// desired state — keys, files, units, binaries — is fleet plumbing that
+// belongs in the API, and this page leaves it alone rather than rewriting it
+// from a form that never saw it.
+
+type settingsView struct {
+	Interval    string
+	Jitter      string
+	RebootOnCfg bool
+	Window      string
+	Allow       string
+
+	Target     string
+	After      string
+	RebootWait string
+	NoGrow     bool
+	NeedSum    bool
+	NoRootKeys bool
+	NoCloud    bool
+	NoAgent    bool
+}
+
+func (a *App) hSettings(w http.ResponseWriter, r *http.Request) {
+	l := a.resolveLang(w, r)
+	cfg := a.configFor("global")
+	ag, _ := cfg["agent"].(map[string]any)
+	in, _ := cfg["install"].(map[string]any)
+	msg, errMsg := flash(r)
+
+	numStr := func(m map[string]any, k string) string {
+		if v, ok := num(m[k]); ok && v != 0 {
+			return fmt.Sprintf("%.0f", v)
+		}
+		return ""
+	}
+	str := func(m map[string]any, k string) string {
+		v, _ := m[k].(string)
+		return v
+	}
+	flag := func(m map[string]any, k string) bool {
+		v, _ := m[k].(bool)
+		return v
+	}
+
+	sv := settingsView{
+		Interval: numStr(ag, "interval"), Jitter: numStr(ag, "jitter"),
+		RebootOnCfg: flag(ag, "reboot_on_boot_config"), Window: str(ag, "maintenance"),
+		Allow:      strings.Join(stringList(ag["allow"]), ", "),
+		Target:     str(in, "install_target"),
+		After:      str(in, "after"),
+		RebootWait: numStr(in, "reboot_delay"),
+		NoGrow:     flag(in, "no_grow"), NeedSum: flag(in, "require_checksum"),
+		NoRootKeys: flag(in, "no_root_keys"), NoCloud: flag(in, "no_cloud_init"),
+		NoAgent: flag(in, "no_agent"),
+	}
+	render(w, settingsTmpl, map[string]any{
+		"L": l, "Path": "/settings", "LocalSite": a.localSiteID(),
+		"S": sv, "Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
+	})
+}
+
+// hSettingsSave writes only the two sections this page owns, merged into what
+// is already there. The form has never seen the keys, files or binaries, so
+// it must not be able to remove them — a lesson from a single API call that
+// emptied the global configuration.
+func (a *App) hSettingsSave(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, "/settings", "err", T(l, "err.form"))
+		return
+	}
+	numOr := func(name string) any {
+		v := strings.TrimSpace(r.FormValue(name))
+		if v == "" {
+			return nil
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil
+		}
+		return n
+	}
+	onOff := func(name string) any {
+		if r.FormValue(name) != "" {
+			return true
+		}
+		return nil // absent means "not set", not "false"
+	}
+	set := func(m map[string]any, k string, v any) {
+		if v == nil {
+			delete(m, k)
+			return
+		}
+		m[k] = v
+	}
+
+	cfg := a.configFor("global")
+	ag, _ := cfg["agent"].(map[string]any)
+	if ag == nil {
+		ag = map[string]any{}
+	}
+	in, _ := cfg["install"].(map[string]any)
+	if in == nil {
+		in = map[string]any{}
+	}
+
+	set(ag, "interval", numOr("interval"))
+	set(ag, "jitter", numOr("jitter"))
+	set(ag, "reboot_on_boot_config", onOff("reboot_on_boot_config"))
+	if win := strings.TrimSpace(r.FormValue("maintenance")); win != "" {
+		if !validWindow(win) {
+			redirectMsg(w, r, "/settings", "err", T(l, "err.window"))
+			return
+		}
+		ag["maintenance"] = win
+	} else {
+		delete(ag, "maintenance")
+	}
+	if v := strings.TrimSpace(r.FormValue("allow")); v != "" {
+		var list []any
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				list = append(list, p)
+			}
+		}
+		ag["allow"] = list
+	} else {
+		delete(ag, "allow")
+	}
+
+	set(in, "install_target", strOrNil(r.FormValue("install_target")))
+	set(in, "after", strOrNil(r.FormValue("after")))
+	set(in, "reboot_delay", numOr("reboot_delay"))
+	for _, k := range []string{"no_grow", "require_checksum", "no_root_keys",
+		"no_cloud_init", "no_agent"} {
+		set(in, k, onOff(k))
+	}
+
+	cfg["agent"] = ag
+	cfg["install"] = in
+	if len(ag) == 0 {
+		delete(cfg, "agent")
+	}
+	if len(in) == 0 {
+		delete(cfg, "install")
+	}
+	raw, _ := json.Marshal(cfg)
+	if _, err := a.db.Exec(`INSERT INTO configs(scope,body,updated) VALUES(?,?,?)
+		ON CONFLICT(scope) DO UPDATE SET body=excluded.body,updated=excluded.updated`,
+		"global", string(raw), now()); err != nil {
+		redirectMsg(w, r, "/settings", "err", err.Error())
+		return
+	}
+	a.logEvent("", "info", "configuration changed: global (settings page)")
+	redirectMsg(w, r, "/settings", "msg", T(l, "msg.saved"))
+}
+
+// validWindow accepts "HH:MM-HH:MM" and nothing else. The agent parses it
+// again on the blade; this is here so a typo is caught while somebody is
+// still looking at the form.
+func validWindow(s string) bool {
+	a, b, found := strings.Cut(s, "-")
+	if !found {
+		return false
+	}
+	ok := func(part string) bool {
+		h, m, found := strings.Cut(strings.TrimSpace(part), ":")
+		if !found {
+			return false
+		}
+		hh, err1 := strconv.Atoi(h)
+		mm, err2 := strconv.Atoi(m)
+		return err1 == nil && err2 == nil && hh >= 0 && hh < 24 && mm >= 0 && mm < 60
+	}
+	return ok(a) && ok(b)
+}
+
+func strOrNil(s string) any {
+	if s = strings.TrimSpace(s); s == "" {
+		return nil
+	}
+	return s
+}
+
+var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse(headHTML + `
+<div class="wrap">
+<header class="top">` + brandBar + `
+<div class="pagehead">
+  <h1>{{t .L "set.title"}}</h1>
+  <p class="sub">{{t .L "set.lead"}}</p>
+</div>
+</header>
+
+{{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
+{{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
+
+<form method="post" action="/settings">
+<div class="card">
+  <div class="card-head"><h2>{{t .L "set.agent"}}</h2>
+    <span class="tag">{{t .L "set.scope"}}</span></div>
+  <div class="body">
+    <div class="row">
+      <div class="narrow"><label for="iv">{{t .L "set.interval"}}</label>
+        <input id="iv" type="number" name="interval" min="10" max="3600" value="{{.S.Interval}}" placeholder="60"></div>
+      <div class="narrow"><label for="ji">{{t .L "set.jitter"}}</label>
+        <input id="ji" type="number" name="jitter" min="0" max="600" value="{{.S.Jitter}}" placeholder="0"></div>
+      <div><label for="al">{{t .L "set.allow"}}</label>
+        <input id="al" type="text" name="allow" value="{{.S.Allow}}" placeholder="{{t .L "set.allowhint"}}"></div>
+    </div>
+    <div class="row" style="margin-top:.8rem">
+      <div><label class="check"><input type="checkbox" name="reboot_on_boot_config" value="1"{{if .S.RebootOnCfg}} checked{{end}}>
+        {{t .L "set.rebootcfg"}}</label></div>
+      <div class="narrow"><label for="mw">{{t .L "set.window"}}</label>
+        <input id="mw" type="text" name="maintenance" value="{{.S.Window}}" placeholder="02:00-04:00"></div>
+    </div>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "set.reboothint"}}</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "set.install"}}</h2></div>
+  <div class="body">
+    <div class="row">
+      <div><label for="tg">{{t .L "set.target"}}</label>
+        <input id="tg" type="text" name="install_target" value="{{.S.Target}}" placeholder="/dev/nvme0n1"></div>
+      <div class="narrow"><label for="af">{{t .L "set.after"}}</label>
+        <select id="af" name="after">
+          <option value=""{{if eq .S.After ""}} selected{{end}}>{{t .L "set.after.reboot"}}</option>
+          <option value="halt"{{if eq .S.After "halt"}} selected{{end}}>{{t .L "set.after.halt"}}</option>
+          <option value="shell"{{if eq .S.After "shell"}} selected{{end}}>{{t .L "set.after.shell"}}</option>
+        </select></div>
+      <div class="narrow"><label for="rd">{{t .L "set.rebootwait"}}</label>
+        <input id="rd" type="number" name="reboot_delay" min="0" max="600" value="{{.S.RebootWait}}" placeholder="5"></div>
+    </div>
+    <div class="row" style="margin-top:.8rem">
+      <div><label class="check"><input type="checkbox" name="require_checksum" value="1"{{if .S.NeedSum}} checked{{end}}>
+        {{t .L "set.needsum"}}</label></div>
+      <div><label class="check"><input type="checkbox" name="no_grow" value="1"{{if .S.NoGrow}} checked{{end}}>
+        {{t .L "set.nogrow"}}</label></div>
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      <div><label class="check"><input type="checkbox" name="no_root_keys" value="1"{{if .S.NoRootKeys}} checked{{end}}>
+        {{t .L "set.nokeys"}}</label></div>
+      <div><label class="check"><input type="checkbox" name="no_cloud_init" value="1"{{if .S.NoCloud}} checked{{end}}>
+        {{t .L "set.nocloud"}}</label></div>
+      <div><label class="check"><input type="checkbox" name="no_agent" value="1"{{if .S.NoAgent}} checked{{end}}>
+        {{t .L "set.noagent"}}</label></div>
+    </div>
+    <div style="margin-top:1.1rem"><button type="submit">{{t .L "form.save"}}</button></div>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "set.seedhint"}}</p>
+  </div>
+</div>
+</form>
+
+<footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
+<span>{{t .L "foot.api"}}</span></footer>
 </div></body></html>`))
