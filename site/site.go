@@ -83,6 +83,10 @@ type site struct {
 	online bool
 	relay  *relay
 	stock  []stockItem
+
+	// The event buffer on disk, so an outage survives a restart of this
+	// service and not only of the link.
+	spool *spool
 }
 
 // stockItem is one line of "what this site actually holds". The catalogue is
@@ -111,7 +115,7 @@ type event struct {
 const maxQueued = 2000
 
 func newSite(c config, dry bool) *site {
-	return &site{
+	s := &site{
 		cfg: c,
 		dry: dry,
 		// Two clients: the pull is a small document on a short leash, an
@@ -119,6 +123,18 @@ func newSite(c config, dry bool) *site {
 		http: &http.Client{Timeout: 30 * time.Second},
 		dl:   &http.Client{Timeout: 0},
 	}
+	s.spool = newSpool(c.StateDir, "events.json", func() any {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		out := make([]event, len(s.queue))
+		copy(out, s.queue)
+		return out
+	})
+	s.spool.load(&s.queue)
+	if n := len(s.queue); n > 0 {
+		log.Printf("%d event(s) from the last run are still waiting", n)
+	}
+	return s
 }
 
 // pass is one turn of the loop: fetch what should be, make it so, report what
@@ -211,6 +227,7 @@ func (s *site) note(serial, level, msg string) {
 	s.queue = append(s.queue, event{
 		TS: time.Now().UTC().Format(time.RFC3339), Serial: serial, Level: level, Msg: msg,
 	})
+	s.spool.touch()
 }
 
 // stage reports what a MAC is doing on the wire, with the address if the line
@@ -224,6 +241,7 @@ func (s *site) stageIP(mac, ip, stage, msg string) {
 	s.queue = append(s.queue, event{
 		TS: time.Now().UTC().Format(time.RFC3339), MAC: mac, IP: ip, Stage: stage, Msg: msg,
 	})
+	s.spool.touch()
 }
 
 // flush hands the buffer over. On failure the events stay queued — they are
@@ -237,6 +255,11 @@ func (s *site) flush() {
 	if len(pending) == 0 {
 		return
 	}
+	// Written before the attempt and after it: what is on disk may be one
+	// delivery behind, never one ahead. A repeated log line is a nuisance; a
+	// lost one is the hour nobody can account for.
+	defer s.spool.writeIfDirty()
+	s.spool.touch()
 	body, _ := json.Marshal(map[string]any{"events": pending})
 	req, err := http.NewRequest("POST",
 		fmt.Sprintf("%s/api/v1/site/%d/events", s.cfg.Server, s.cfg.SiteID),
@@ -259,6 +282,7 @@ func (s *site) flush() {
 	s.mu.Lock()
 	s.queue = append(pending, s.queue...)
 	s.mu.Unlock()
+	s.spool.touch()
 }
 
 func (s *site) report(d *desired) {
@@ -388,4 +412,12 @@ func (s *site) loadState() *desired {
 		return nil
 	}
 	return &d
+}
+
+// writeSpools puts both buffers on disk right now.
+func (s *site) writeSpools() {
+	s.spool.writeIfDirty()
+	if s.relay != nil {
+		s.relay.spool.writeIfDirty()
+	}
 }

@@ -33,6 +33,7 @@ type relay struct {
 
 	mu      sync.Mutex
 	pending []queued // blade reports waiting for the centre
+	spool   *spool   // the same, on disk, so a restart does not lose them
 }
 
 // queued is a report a blade made while the centre was unreachable. Kept in
@@ -47,9 +48,10 @@ type queued struct {
 }
 
 const maxPending = 5000
+const maxQueuedBody = 256 << 10
 
 func newRelay(s *site) *relay {
-	return &relay{
+	r := &relay{
 		s:        s,
 		upstream: s.cfg.Server,
 		// Short: a blade waiting on us is a blade not booting. If the centre
@@ -57,6 +59,18 @@ func newRelay(s *site) *relay {
 		// answers by itself.
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
+	r.spool = newSpool(s.cfg.StateDir, "reports.json", func() any {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		out := make([]queued, len(r.pending))
+		copy(out, r.pending)
+		return out
+	})
+	r.spool.load(&r.pending)
+	if n := len(r.pending); n > 0 {
+		log.Printf("%d blade report(s) from the last run are still waiting", n)
+	}
+	return r
 }
 
 func (r *relay) routes() *http.ServeMux {
@@ -288,6 +302,14 @@ func (r *relay) forwardOrQueue(w http.ResponseWriter, req *http.Request) {
 		copyResponse(w, resp)
 		return
 	}
+	// A blade report is a few kilobytes. Anything far bigger is not a report
+	// and has no business sitting in a buffer that has to be written to disk
+	// on every change.
+	if len(body) > maxQueuedBody {
+		log.Printf("not queueing %s %s: %d bytes", req.Method, req.URL.Path, len(body))
+		writeJSON(w, 503, map[string]any{"queued": false, "reason": "too large to buffer"})
+		return
+	}
 	r.mu.Lock()
 	if len(r.pending) >= maxPending {
 		r.pending = r.pending[len(r.pending)-maxPending/2:]
@@ -298,6 +320,7 @@ func (r *relay) forwardOrQueue(w http.ResponseWriter, req *http.Request) {
 	})
 	n := len(r.pending)
 	r.mu.Unlock()
+	r.spool.touch()
 	log.Printf("queued %s %s (%d waiting)", req.Method, req.URL.Path, n)
 	writeJSON(w, 202, map[string]any{"queued": true, "waiting": n})
 }
@@ -311,6 +334,10 @@ func (r *relay) drain() {
 	if len(pending) == 0 {
 		return
 	}
+	// One behind rather than one ahead: a report delivered twice is harmless,
+	// a report lost is a hole in the record.
+	defer r.spool.writeIfDirty()
+	r.spool.touch()
 	sent := 0
 	for i, q := range pending {
 		req, err := http.NewRequest(q.Method, r.upstream+q.Path, bytes.NewReader(q.Body))
@@ -327,6 +354,7 @@ func (r *relay) drain() {
 			r.mu.Lock()
 			r.pending = append(pending[i:], r.pending...)
 			r.mu.Unlock()
+			r.spool.touch()
 			break
 		}
 		resp.Body.Close()

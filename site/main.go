@@ -85,7 +85,9 @@ func main() {
 	}
 
 	if *once {
-		if err := s.pass(); err != nil {
+		err := s.pass()
+		s.writeSpools()
+		if err != nil {
 			log.Fatalf("pass: %v", err)
 		}
 		return
@@ -115,6 +117,15 @@ func main() {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	// The buffers are written a second after they change, and once more on
+	// the way out — a service that is asked to stop should not be the reason
+	// an outage loses its record.
+	spools := make(chan struct{})
+	go s.spool.run(time.Second, spools)
+	if s.relay != nil {
+		go s.relay.spool.run(time.Second, spools)
+	}
 	t := time.NewTicker(c.Interval)
 	defer t.Stop()
 
@@ -129,6 +140,11 @@ func main() {
 			}
 		case <-stop:
 			log.Printf("stopping")
+			close(spools)
+			// Written here and not left to the goroutines: the process is
+			// about to end, and a write that has not been scheduled yet is a
+			// write that never happens.
+			s.writeSpools()
 			return
 		}
 	}

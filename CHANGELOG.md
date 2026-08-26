@@ -51,6 +51,14 @@ on `main`.
   installation's SSH keys, boot configuration and binaries.
 
 ### Fixed
+- `sheath-site` kept its two buffers — the events it observed and the blade
+  reports it accepted while the centre was unreachable — in memory only, so
+  restarting the service during an outage threw away exactly the part of the
+  story nobody else saw. Both are now written to the state directory a second
+  after they change and once more on the way out, replaced atomically, loaded
+  again at startup, and emptied only after delivery. The blade reports carry
+  the blades' own tokens, so the files are `0600`; a body too large to be a
+  report is refused rather than buffered.
 - "Fan stopped" needed three things to be true and checked one. It now asks
   whether the unit measures at all, whether the fan was asked to spin, and
   whether it has had time to answer — a blade three minutes into its first
