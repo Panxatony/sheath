@@ -362,6 +362,7 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 	render(w, overviewTmpl, map[string]any{
 		"L":          l,
 		"Path":       "/",
+		"LocalSite":  a.localSiteID(),
 		"Netboot":    nb,
 		"Images":     images,
 		"Refresh":    active,
@@ -399,6 +400,15 @@ type siteGroup struct {
 	Blades int
 	Used   int
 	Free   int
+}
+
+// localSiteID is the site this server considers "here" — the menu links to
+// it, and zero means there is none to link to.
+func (a *App) localSiteID() int64 {
+	if st, err := a.localSite(); err == nil {
+		return st.ID
+	}
+	return 0
 }
 
 // siteChoices is the list a form offers. Kept small on purpose: a select
@@ -632,6 +642,7 @@ func (a *App) hRackPage(w http.ResponseWriter, r *http.Request) {
 	render(w, rackTmpl, map[string]any{
 		"L":         l,
 		"Path":      "/bladerunners/" + strconv.FormatInt(id, 10),
+		"LocalSite": a.localSiteID(),
 		"R":         rv,
 		"Free":      free,
 		"Images":    images,
@@ -1373,8 +1384,9 @@ const markSVG = `<svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusa
 	`M9.4 14.4 H14.6 V16.3 H9.4 Z"/></svg>`
 
 var tmplFuncs = template.FuncMap{
-	"mark": func() template.HTML { return template.HTML(markSVG) },
-	"t":    T,
+	"hasPrefix": strings.HasPrefix,
+	"mark":      func() template.HTML { return template.HTML(markSVG) },
+	"t":         T,
 	// th returns translations that deliberately carry markup (a <code> around
 	// a path, say). Only for text from the catalogue — never for input.
 	"th": func(l Lang, key string, args ...any) template.HTML {
@@ -1534,6 +1546,20 @@ svg.topo .cell.busy{fill:var(--warn)}
 svg.topo .cell.bad{fill:var(--crit)}
 svg.topo .cell.free{fill:var(--surface);stroke:var(--rule-s);stroke-width:.8}
 svg.topo .cell.ident{fill:var(--ident)}
+/* The menu bar. Quiet by default — it is orientation, not decoration — with
+   the page you are on marked by weight and a rule rather than a colour, so it
+   still reads in both themes. */
+a.brand{display:flex;align-items:center;gap:.5rem;text-decoration:none;color:inherit}
+a.brand:hover{color:var(--accent-ink)}
+.pagehead{margin:1.1rem 0 0}
+.pagehead h1{margin:0}
+.pagehead .sub{margin:.35rem 0 0}
+.nav{display:flex;flex-wrap:wrap;gap:1.4rem;margin:.75rem 0 0;
+  font:600 .8rem/1 ui-monospace,monospace;letter-spacing:.09em;text-transform:uppercase}
+.nav a{color:var(--ink-3);text-decoration:none;padding-bottom:.35rem;
+  border-bottom:2px solid transparent}
+.nav a:hover{color:var(--accent-ink)}
+.nav a.here{color:var(--ink);border-bottom-color:var(--accent)}
 .therm{display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;margin:.5rem 0 0;
   font:.85rem/1.6 ui-monospace,monospace;color:var(--ink-2)}
 .therm b{color:var(--ink);font-weight:600}
@@ -1661,22 +1687,35 @@ const headHTML = `<!doctype html><html lang="{{.L}}"><head><meta charset="utf-8"
 <style>` + baseCSS + `</style></head><body>`
 
 // topRight holds the language switch and sign-out — identical on every page.
+// navBar is the one row that says where you can go and where you are. It
+// replaced a subtitle repeating the site's network, which the site card on
+// the same page already carried — a header should orient, not restate.
+const navBar = `<nav class="nav" aria-label="{{t .L "nav.label"}}">
+  <a href="/"{{if eq .Path "/"}} class="here" aria-current="page"{{end}}>{{t .L "nav.overview"}}</a>
+  <a href="/map"{{if eq .Path "/map"}} class="here" aria-current="page"{{end}}>{{t .L "nav.map"}}</a>
+  {{if .LocalSite}}<a href="/sites/{{.LocalSite}}"{{if hasPrefix .Path "/sites/"}} class="here" aria-current="page"{{end}}>{{t .L "site.title"}}</a>{{end}}
+</nav>`
+
 const topRight = `<div class="topright">
   <a class="langlink" href="/lang/{{otherLang .L}}?next={{.Path | urlquery}}"
      hreflang="{{otherLang .L}}">{{langName (otherLang .L)}}</a>
   <form method="post" action="/logout"><button class="ghost">{{t .L "btn.signout"}}</button></form>
 </div>`
 
+// brandBar is the head every page wears: the mark, the name, the controls,
+// the menu. It used to differ per page — the overview carried the mark and
+// the others a breadcrumb — which made the whole page jump on every
+// navigation. A header that moves is a header nobody can aim at.
+const brandBar = `<div class="topbar">
+  <a class="brand" href="/">{{mark}}<span>Sheath</span></a>` + topRight + `</div>` + navBar
+
 var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="wrap">
-<header class="top"><div class="topbar"><div>
-  <h1 class="brand">{{mark}}<span>She<em>ath</em></span></h1>
-  <p class="sub">{{t .L "sub.network" .NetBase .PoolFrom .PoolTo}}</p>
-</div>` + topRight + `</div>
+<header class="top">` + brandBar + `
+<div class="pagehead"><h1>{{t .L "nav.overview"}}</h1></div>
 <div class="meta"><span>{{t .L "meta.racks"}} <b>{{len .Racks}}</b></span>
 <span>{{t .L "meta.blades"}} <b>{{.Blades}}</b></span>
-<span>{{t .L "site.title"}} <b>{{len .Sites}}</b></span>
-<span><a href="/map">{{t .L "map.link"}} →</a></span></div>
+<span>{{t .L "site.title"}} <b>{{len .Sites}}</b></span></div>
 </header>
 
 {{if .Open}}<div class="bad">{{th .L "warn.open"}}</div>{{end}}
@@ -1885,12 +1924,12 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
 
 var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="wrap">
-<header class="top"><div class="topbar"><div>
-  <p class="crumb"><a href="/">{{mark}} {{t .L "nav.overview"}}</a> / {{t .L "nav.rack"}}</p>
+<header class="top">` + brandBar + `
+<div class="pagehead">
   <h1>{{.R.Rack.Name}}</h1>
   <p class="sub">{{t .L "ov.slots" .R.Rack.Size}}{{if .R.Rack.Location}} · {{.R.Rack.Location}}{{end}}
    · {{t .L "rk.block" .R.From .R.To}}{{if .R.SiteName}} · {{t .L "site.one"}} {{.R.SiteName}}{{end}}</p>
-</div>` + topRight + `</div>
+</div>
 <div class="meta"><span>{{t .L "meta.used"}} <b>{{.R.Used}}</b></span>
 <span>{{t .L "meta.free"}} <b>{{.R.Free}}</b></span></div>
 {{if .R.Therm.Have}}
@@ -2109,7 +2148,7 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
 var loginTmpl = template.Must(template.New("login").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="signin"><div class="signin-box">
 <header class="top"><div class="topbar"><div>
-  <h1 class="brand">{{mark}}<span>She<em>ath</em></span></h1>
+  <h1 class="brand">{{mark}}<span>Sheath</span></h1>
   <p class="sub">{{t .L "login.lead"}}</p>
 </div><a class="langlink" href="/lang/{{otherLang .L}}?next={{.Path | urlquery}}"
    hreflang="{{otherLang .L}}">{{langName (otherLang .L)}}</a></div></header>
@@ -2206,14 +2245,15 @@ func (a *App) hTopology(w http.ResponseWriter, r *http.Request) {
 
 	msg, errMsg := flash(r)
 	render(w, topoTmpl, map[string]any{
-		"L":      l,
-		"Path":   "/map",
-		"Sites":  views,
-		"SVG":    topoSVG(l, views, a.baseURL),
-		"Blades": len(blades),
-		"Msg":    msg,
-		"Err":    errMsg,
-		"Open":   a.adminToken == "",
+		"L":         l,
+		"Path":      "/map",
+		"LocalSite": a.localSiteID(),
+		"Sites":     views,
+		"SVG":       topoSVG(l, views, a.baseURL),
+		"Blades":    len(blades),
+		"Msg":       msg,
+		"Err":       errMsg,
+		"Open":      a.adminToken == "",
 	})
 }
 
@@ -2309,11 +2349,11 @@ func shortURL(u string) string {
 
 var topoTmpl = template.Must(template.New("map").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="wrap">
-<header class="top"><div class="topbar"><div>
-  <p class="crumb"><a href="/">{{mark}} {{t .L "nav.overview"}}</a> / {{t .L "nav.map"}}</p>
+<header class="top">` + brandBar + `
+<div class="pagehead">
   <h1>{{t .L "map.title"}}</h1>
   <p class="sub">{{t .L "map.lead"}}</p>
-</div>` + topRight + `</div>
+</div>
 <div class="meta"><span>{{t .L "site.title"}} <b>{{len .Sites}}</b></span>
 <span>{{t .L "meta.blades"}} <b>{{.Blades}}</b></span></div>
 </header>
@@ -2583,24 +2623,25 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 	key, led, seenAt := siteHealth(l, *st)
 	msg, errMsg := flash(r)
 	render(w, siteTmpl, map[string]any{
-		"L":        l,
-		"Path":     "/sites/" + strconv.FormatInt(id, 10),
-		"S":        *st,
-		"Net":      st.NetBase + ".0/24",
-		"Pool":     fmt.Sprintf(".%d–.%d", st.PoolFrom, st.PoolTo),
-		"State":    T(l, key),
-		"SLED":     led,
-		"Seen":     seenAt,
-		"HasToken": st.Token != "",
-		"Pol":      a.siteOwnPolicy(id),
-		"Eff":      a.sitePolicy(id),
-		"Glob":     a.globalPolicy(),
-		"Stock":    rows,
-		"Racks":    rvs,
-		"Used":     used,
-		"Msg":      msg,
-		"Err":      errMsg,
-		"Open":     a.adminToken == "",
+		"L":         l,
+		"Path":      "/sites/" + strconv.FormatInt(id, 10),
+		"LocalSite": a.localSiteID(),
+		"S":         *st,
+		"Net":       st.NetBase + ".0/24",
+		"Pool":      fmt.Sprintf(".%d–.%d", st.PoolFrom, st.PoolTo),
+		"State":     T(l, key),
+		"SLED":      led,
+		"Seen":      seenAt,
+		"HasToken":  st.Token != "",
+		"Pol":       a.siteOwnPolicy(id),
+		"Eff":       a.sitePolicy(id),
+		"Glob":      a.globalPolicy(),
+		"Stock":     rows,
+		"Racks":     rvs,
+		"Used":      used,
+		"Msg":       msg,
+		"Err":       errMsg,
+		"Open":      a.adminToken == "",
 	})
 }
 
@@ -2619,11 +2660,11 @@ func human(n int64) string {
 
 var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="wrap">
-<header class="top"><div class="topbar"><div>
-  <p class="crumb"><a href="/">{{mark}} {{t .L "nav.overview"}}</a> / <a href="/map">{{t .L "nav.map"}}</a> / {{t .L "site.one"}}</p>
+<header class="top">` + brandBar + `
+<div class="pagehead">
   <h1>{{.S.Name}} <span class="chip {{.SLED}}">{{.State}}{{if .Seen}} · {{.Seen}}{{end}}</span></h1>
   <p class="sub">{{.Net}} · {{t .L "site.pool"}} {{.Pool}}{{if .S.Location}} · {{.S.Location}}{{end}}</p>
-</div>` + topRight + `</div>
+</div>
 <div class="meta"><span>{{t .L "meta.racks"}} <b>{{len .Racks}}</b></span>
 <span>{{t .L "meta.used"}} <b>{{.Used}}</b></span>
 <span>{{t .L "stock.title"}} <b>{{len .Stock}}</b></span></div>

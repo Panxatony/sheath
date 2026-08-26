@@ -65,7 +65,7 @@ func (r *relay) routes() *http.ServeMux {
 	// The installer's questions. Answerable from the cached state, which is
 	// what makes an installation during an outage possible at all.
 	mux.HandleFunc("POST /api/v1/provision/{serial}", r.provision)
-	mux.HandleFunc("POST /api/v1/provision/{serial}/status", r.forwardOrQueue)
+	mux.HandleFunc("POST /api/v1/provision/{serial}/status", r.provisionStatus)
 
 	// The agent's conversation.
 	mux.HandleFunc("GET /api/v1/blades/{serial}/config", r.bladeConfig)
@@ -97,7 +97,7 @@ func (r *relay) provision(w http.ResponseWriter, req *http.Request) {
 	body, _ := io.ReadAll(io.LimitReader(req.Body, 1<<20))
 	if resp, err := r.forward(req, body); err == nil {
 		defer resp.Body.Close()
-		copyResponse(w, resp)
+		r.answerWithLocalImage(w, resp, req)
 		return
 	}
 
@@ -161,6 +161,82 @@ func (r *relay) provision(w http.ResponseWriter, req *http.Request) {
 		"token":  b.Token,
 		"target": "/dev/nvme0n1",
 	})
+}
+
+// answerWithLocalImage passes the centre's answer on, but points the blade at
+// this site's copy of the image where there is one.
+//
+// The centre names itself in that URL, which is correct and useless: the
+// bytes are already here, the site link may be slow, and — as one afternoon
+// showed — the centre can move house in the middle of a download and take
+// two installations with it. What the site holds, the site serves.
+func (r *relay) answerWithLocalImage(w http.ResponseWriter, resp *http.Response, req *http.Request) {
+	if resp.StatusCode != 200 {
+		copyResponse(w, resp)
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		copyResponse(w, resp)
+		return
+	}
+	var job map[string]any
+	if err := json.Unmarshal(raw, &job); err == nil {
+		if u, _ := job["url"].(string); u != "" {
+			name := u[strings.LastIndexByte(u, '/')+1:]
+			if name != "" && !strings.Contains(name, "..") {
+				if _, err := os.Stat(filepath.Join(r.s.cfg.ImagesDir, name)); err == nil {
+					job["url"] = r.selfURL(req) + "/images/" + name
+					if out, err := json.Marshal(job); err == nil {
+						raw = out
+						log.Printf("provision %s: serving %s from this site",
+							req.PathValue("serial"), name)
+					}
+				}
+			}
+		}
+	}
+	for k, vs := range resp.Header {
+		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(raw)
+}
+
+// provisionStatus passes a progress report on and, when it says the work is
+// finished, fetches the desired state at once instead of waiting for the next
+// pass.
+//
+// The reason is a race that cost a blade a reboot: an installer that is done
+// restarts within seconds, and if the reservation still carries the netboot
+// tag at that moment, the blade lands in the installer again. Thirty seconds
+// of polling is fine for noticing a change somebody made elsewhere; it is too
+// slow for a change this program itself has just caused.
+func (r *relay) provisionStatus(w http.ResponseWriter, req *http.Request) {
+	body, _ := io.ReadAll(io.LimitReader(req.Body, 4<<20))
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	r.forwardOrQueue(w, req)
+
+	var in struct {
+		Phase string `json:"phase"`
+	}
+	if err := json.Unmarshal(body, &in); err != nil {
+		return
+	}
+	if in.Phase == "done" || in.Phase == "wiped" {
+		log.Printf("%s reports %s — refreshing the desired state now",
+			req.PathValue("serial"), in.Phase)
+		go func() {
+			if err := r.s.pass(); err != nil {
+				log.Printf("refresh after %s: %v", in.Phase, err)
+			}
+		}()
+	}
 }
 
 // bladeConfig hands the agent its desired state. The site holds it for its

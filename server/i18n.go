@@ -242,6 +242,7 @@ var catalog = map[string]map[Lang]string{
 	"err.sitehasracks": {LangEN: "site still holds %d BladeRunner(s)", LangDE: "Standort enthält noch %d BladeRunner"},
 	"err.sitelast":     {LangEN: "the last site cannot be removed", LangDE: "Der letzte Standort kann nicht entfernt werden"},
 
+	"nav.label": {LangEN: "Sections", LangDE: "Bereiche"},
 	"nav.map":   {LangEN: "Map", LangDE: "Karte"},
 	"map.link":  {LangEN: "Map", LangDE: "Karte"},
 	"map.title": {LangEN: "Installation map", LangDE: "Karte der Installation"},

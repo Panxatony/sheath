@@ -5,6 +5,28 @@ on `main`.
 
 ## Unreleased
 
+### Added
+- The site serves images from its own cache: when the centre's job names an
+  image the site already holds, the relay rewrites the URL to itself. The
+  bytes are here, the site link may be slow — and, as one afternoon showed,
+  the centre can move to another machine mid-download and take two
+  installations with it.
+- The site fetches the desired state at once when an installer reports "done"
+  or "wiped", instead of waiting for its next pass. A finished installer
+  restarts within seconds; if the reservation still carries the netboot tag at
+  that moment, the blade lands in the installer again.
+- An installer that finds a system on the disk and no installation requested
+  now restarts into it after a minute rather than waiting forever. Nothing is
+  written in that state, and a netboot that really were armed would answer
+  "go" rather than "idle".
+- Every page carries the same header — mark, name, controls, menu — instead of
+  the overview showing a brand and the rest a breadcrumb. A header that moves
+  is a header nobody can aim at.
+
+### Fixed
+- The built `sheathd` was tracked in git: the rename turned the ignore rule
+  for the old binary into one that no longer matched.
+
 ### Changed
 - **Renamed from Rookery to Sheath.** A sheath is what a blade lives in when
   it is not in use: it holds the blade, keeps its edge, gives it a place. The

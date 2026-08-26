@@ -511,20 +511,27 @@ func memAvailable() string {
 // active.
 func (c *client) waitForNetwork() error {
 	logf("Waiting for the network ...")
-	deadline := time.Now().Add(3 * time.Minute)
-	for attempt := 1; time.Now().Before(deadline); attempt++ {
+	// It waits as long as it takes. An earlier version gave up after three
+	// minutes and dropped into a halt — and three blades sat there for an
+	// hour because the server had been moved to another machine while they
+	// were booting. A blade in the mini OS has nothing else to do; giving up
+	// only means somebody has to walk to the rack.
+	for attempt := 1; ; attempt++ {
 		resp, err := c.http().Get(c.base + "/healthz")
 		if err == nil {
 			resp.Body.Close()
 			logf("Network is up (IP %s)", localIP())
 			return nil
 		}
-		if attempt%5 == 0 {
-			logf("  ... still no connection to %s (%v)", c.base, err)
+		switch {
+		case attempt == 5:
+			logf("  ... no connection to %s yet (%v)", c.base, err)
+			logf("  ... this waits; it does not give up.")
+		case attempt%30 == 0:
+			logf("  ... still waiting for %s (%v)", c.base, err)
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return fmt.Errorf("server %s was unreachable for three minutes", c.base)
 }
 
 func localIP() string {
@@ -574,6 +581,7 @@ func (c *client) syncClock() {
 func (c *client) waitForJob(mac string) (*provisionResp, error) {
 	body, _ := json.Marshal(map[string]string{"mac": mac})
 	announced, idleShown := false, false
+	var idleSince time.Time
 	for {
 		resp, err := c.http().Post(
 			c.base+"/api/v1/provision/"+c.serial,
@@ -614,6 +622,20 @@ func (c *client) waitForJob(mac string) (*provisionResp, error) {
 				explainIdle(&idleErr{msg: job.Message, image: job.Image})
 				idleShown = true
 				announced = true
+				idleSince = time.Now()
+			}
+			// A finished blade that lands here again did so because the
+			// netboot tag had not been cleared yet when it restarted — the
+			// work is done, the disk holds a system, and waiting here helps
+			// nobody. Restarting is safe: nothing has been written, and if
+			// the tag really were still set the answer would be "go", not
+			// "idle".
+			if installedLooking(defaultTarget) && time.Since(idleSince) > time.Minute {
+				logf("")
+				logf("A system is on the disk and no installation is requested.")
+				logf("Restarting into it in 5 seconds.")
+				time.Sleep(5 * time.Second)
+				reboot()
 			}
 			wait := job.RetryAfter
 			if wait <= 0 {
