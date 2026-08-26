@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -2672,6 +2673,8 @@ func human(n int64) string {
 		return fmt.Sprintf("%.1f GB", float64(n)/float64(1<<30))
 	case n >= 1<<20:
 		return fmt.Sprintf("%.0f MB", float64(n)/float64(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.0f KB", float64(n)/float64(1<<10))
 	case n > 0:
 		return fmt.Sprintf("%d B", n)
 	}
@@ -2862,9 +2865,15 @@ func (a *App) hSettings(w http.ResponseWriter, r *http.Request) {
 		NoRootKeys: flag(in, "no_root_keys"), NoCloud: flag(in, "no_cloud_init"),
 		NoAgent: flag(in, "no_agent"),
 	}
+	bk := a.backupInfo()
+	last := T(l, "bk.none")
+	if !bk.Last.IsZero() {
+		last = bk.Last.Local().Format("2006-01-02 15:04") + " · " + human(bk.Size)
+	}
 	render(w, settingsTmpl, map[string]any{
 		"L": l, "Path": "/settings", "LocalSite": a.localSiteID(),
 		"S": sv, "Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
+		"BK": bk, "BKLast": last,
 	})
 }
 
@@ -3060,6 +3069,26 @@ var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse
 </div>
 </form>
 
+<div class="card">
+  <div class="card-head"><h2>{{t .L "bk.title"}}</h2>
+    <span class="tag">{{t .L "bk.at"}} {{.BK.At}}</span></div>
+  <div class="body">
+    <p class="hint" style="margin:0 0 1rem">{{t .L "bk.lead"}}</p>
+    {{if .BK.Dir}}
+    <div class="meta">
+      <span>{{t .L "bk.dir"}} <b>{{.BK.Dir}}</b></span>
+      <span>{{t .L "bk.last"}} <b>{{.BKLast}}</b></span>
+      <span>{{t .L "bk.keep"}} <b>{{.BK.Count}}/{{.BK.Keep}}</b></span>
+    </div>
+    <div style="margin-top:1.2rem">
+      <form method="post" action="/settings/backup"><button type="submit">{{t .L "bk.now"}}</button></form>
+    </div>
+    <p class="hint" style="margin:.9rem 0 0">{{t .L "bk.tokens"}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "bk.restore"}}</p>
+    {{else}}<p class="hint">{{t .L "bk.off"}}</p>{{end}}
+  </div>
+</div>
+
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
 <span>{{t .L "foot.api"}}</span></footer>
 </div></body></html>`))
@@ -3252,3 +3281,22 @@ var imagesTmpl = template.Must(template.New("images").Funcs(tmplFuncs).Parse(hea
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
 <span>{{t .L "foot.api"}}</span></footer>
 </div></body></html>`))
+
+// hUIBackupNow is the button beside the backup card. A backup nobody can
+// trigger is a backup nobody has ever seen work.
+func (a *App) hUIBackupNow(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	path, size, err := a.backupNow()
+	if err != nil {
+		redirectMsg(w, r, "/settings", "err", errText(l, err))
+		return
+	}
+	dropped := a.pruneBackups(a.backupKeep)
+	msg := fmt.Sprintf("backup written: %s (%s)", filepath.Base(path), human(size))
+	if dropped > 0 {
+		msg += fmt.Sprintf(", %d older one(s) removed", dropped)
+	}
+	a.logEvent("", "info", msg)
+	redirectMsg(w, r, "/settings", "msg",
+		fmt.Sprintf(T(l, "bk.done"), filepath.Base(path), human(size)))
+}

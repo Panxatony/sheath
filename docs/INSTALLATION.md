@@ -236,7 +236,7 @@ sudo install -o root  -g root  -m 0755 tools/mirror-image.sh tools/prepare-image
 ```
 
 The two shell tools go somewhere root owns because the server runs them under
-`sudo` when an image is added from the interface (§3.10). Leaving them writable
+`sudo` when an image is added from the interface (§3.11). Leaving them writable
 by the service user would turn one allowed command into any command.
 
 The agent binary goes into `/srv/sheath/agent/` because the installer fetches it
@@ -297,6 +297,9 @@ site row in the database.
 | `--dnsmasq-log` | `/srv/sheath/logs/dnsmasq.log` | only read when `--local-dhcp` is on |
 | `--tools` | `/srv/sheath/tools` | the two shell tools the server runs to fetch and prepare images |
 | `--root` | `/srv/sheath` | the directory those tools work in, passed to them as `--root=` |
+| `--backup` | `/srv/sheath/backups` | where the database copies go; empty switches them off |
+| `--backup-at` | `03:30` | time of day for the copy, local time |
+| `--backup-keep` | `14` | how many copies to keep |
 
 `--base-url` is not the address blades use. Blades use their site. This is the
 address the site itself calls for the payload and the image bytes, and it is
@@ -319,7 +322,7 @@ sudo visudo -cf /etc/sudoers.d/sheath-images
 
 The scripts must be owned by root and not writable by `sheath` — otherwise the
 rule permits whatever the service user cares to write into them. Skip this file
-entirely where images are only ever added by hand on the command line (§3.10).
+entirely where images are only ever added by hand on the command line (§3.11).
 
 ### 3.4 First start, the admin token, and site 1
 
@@ -803,7 +806,60 @@ On failure the blade stops with a message instead of dropping into a boot loop.
 `debugconsole` in `cmdline.txt` keeps a getty alongside, so you can get a shell
 without pulling the blade.
 
-### 3.10 Images
+### 3.10 The backup
+
+The database holds the admin token, the token of every site, the token of
+every blade, the inventory, the configuration and the policy. It is the one
+file whose loss is not "install Sheath again" but "enroll every blade again,
+by hand, while they are running".
+
+`sheathd` writes a copy of it into `--backup` (default `/srv/sheath/backups`)
+daily at `--backup-at` (default `03:30`, local time), keeps `--backup-keep`
+of them (default 14) and links the newest as `sheath-latest.db`. One is also
+taken at startup when the newest is older than a day, so a machine that is off
+at night still gets one. An empty `--backup` switches the whole thing off.
+
+```sh
+sudo install -d -o sheath -g sheath -m 0700 /srv/sheath/backups
+```
+
+**Why a copy at all, when the machine is already backed up.** Whatever carries
+this machine away — Proxmox, Borgmatic, a tarball — copies files while the
+server is writing to them. SQLite writes through a write-ahead log: the `.db`
+alone is a stale state, the `.db` plus a half-written `-wal` is a torn one, and
+a torn one restores as `database disk image is malformed`. `VACUUM INTO` folds
+the log in and writes a complete database in one go, while everyone keeps
+working. Point the outside backup at `/srv/sheath/backups` and it picks up a
+file that was already consistent when it arrived.
+
+**The copies are secrets.** Every token in the system is in them. The
+directory is created `0700` and the files are written `0600`; they live
+outside everything the server offers over HTTP.
+
+**Restoring:**
+
+```sh
+sudo systemctl stop sheathd
+sudo -u sheath cp /srv/sheath/backups/sheath-latest.db /srv/sheath/data/sheath.db
+sudo rm -f /srv/sheath/data/sheath.db-wal /srv/sheath/data/sheath.db-shm
+sudo systemctl start sheathd
+```
+
+Removing the `-wal` and `-shm` is not optional: they belong to the database
+that was there before, and SQLite will try to replay them onto the one that
+just arrived. That is the same trap the other way round — a database moved
+without its `-wal` loses whatever had not been checkpointed yet.
+
+Rehearse it before you need it. The copy can be opened without touching
+anything that is running:
+
+```sh
+sudo -u sheath /srv/sheath/sheathd -db /tmp/drill.db -addr 127.0.0.1:8099 \
+     --local-dhcp=false --backup=""
+curl -s localhost:8099/api/v1/health
+```
+
+### 3.11 Images
 
 Images live in `/srv/sheath/images/` on the centre, are served under `/images/`,
 and are copied to each site that needs them — once per site, not once per blade.
@@ -890,7 +946,7 @@ the note. The bytes are on disk and a blade can be installed from them; only the
 customisation did not happen, and calling that an error would suggest there is
 nothing to install.
 
-### 3.11 Settings and policy
+### 3.12 Settings and policy
 
 Two places hold the numbers, and they are not the same thing.
 
@@ -1140,7 +1196,7 @@ segments.
   both ways, **Reboot**, **Reimage**, **Erase NVMe** and **Remove**.
 - **Images `/images`** — the catalogue, what each entry can do, and the form that
   fetches and prepares a new one. An image in use cannot be removed.
-- **Settings `/settings`** — the agent and installation sections (§3.11).
+- **Settings `/settings`** — the agent and installation sections (§3.12).
 
 Every action is a POST followed by a redirect, so a reload never triggers
 anything twice.
@@ -1411,7 +1467,7 @@ curl -sS -H "Authorization: Bearer $T" \
      http://10.0.0.10:8080/api/v1/config/global > global.json
 ```
 
-The settings page (§3.11) is safe by construction: it writes only the two
+The settings page (§3.12) is safe by construction: it writes only the two
 sections it owns and merges them.
 
 ### A DietPi blade shows permanent drift

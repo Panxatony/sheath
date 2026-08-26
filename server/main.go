@@ -21,6 +21,9 @@ type App struct {
 	imagesDir  string
 	toolsDir   string
 	rootDir    string
+	backupDir  string
+	backupAt   string
+	backupKeep int
 	sess       *sessions
 
 	// Fetching and preparing images, one at a time
@@ -45,9 +48,13 @@ func main() {
 		toolsDir  = flag.String("tools", "/srv/sheath/tools",
 			"directory holding the shell tools the server runs to fetch and prepare images")
 		rootDir   = flag.String("root", "/srv/sheath", "directory the tools work in")
-		baseURL   = flag.String("base-url", "", "base URL reachable from the blades (default: http://<net_base>.10:8080)")
-		netBase   = flag.String("net-base", "", "base of the blade network, e.g. 10.0.0 (needed on first start only)")
-		localDHCP = flag.Bool("local-dhcp", true,
+		backupDir = flag.String("backup", "/srv/sheath/backups",
+			"directory for database copies an outside backup can pick up; empty switches it off")
+		backupAt   = flag.String("backup-at", "03:30", "time of day for the copy, local time")
+		backupKeep = flag.Int("backup-keep", 14, "how many copies to keep")
+		baseURL    = flag.String("base-url", "", "base URL reachable from the blades (default: http://<net_base>.10:8080)")
+		netBase    = flag.String("net-base", "", "base of the blade network, e.g. 10.0.0 (needed on first start only)")
+		localDHCP  = flag.Bool("local-dhcp", true,
 			"write dnsmasq reservations and watch the log here; turn off where a sheath-site does it")
 		tftpDir = flag.String("tftp", "/srv/sheath/tftp",
 			"TFTP root, served to sites over HTTP so they can offer the same payload")
@@ -66,6 +73,7 @@ func main() {
 	defer db.Close()
 
 	app := &App{db: db, imagesDir: *imagesDir, toolsDir: *toolsDir, rootDir: *rootDir,
+		backupDir: *backupDir, backupAt: *backupAt, backupKeep: *backupKeep,
 		sess: newSessions()}
 
 	if *netBase != "" {
@@ -127,6 +135,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/v1/images", app.requireAdmin(app.hImagesList))
 	mux.HandleFunc("POST /api/v1/images", app.requireAdmin(app.hImagesCreate))
+	mux.HandleFunc("POST /api/v1/backup", app.requireAdmin(app.hBackupNow))
 	mux.HandleFunc("POST /api/v1/images/fetch", app.requireAdmin(app.hImagesFetch))
 	mux.HandleFunc("DELETE /api/v1/images/{id}", app.requireAdmin(app.hImageDelete))
 
@@ -176,6 +185,7 @@ func main() {
 	mux.HandleFunc("GET /", app.requireUI(app.hUI))
 	mux.HandleFunc("GET /settings", app.requireUI(app.hSettings))
 	mux.HandleFunc("POST /settings", app.requireUI(app.hSettingsSave))
+	mux.HandleFunc("POST /settings/backup", app.requireUI(app.hUIBackupNow))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
 	mux.HandleFunc("GET /images", app.requireUI(app.hImagesPage))
 	mux.HandleFunc("POST /images/add", app.requireUI(app.hUIImageAdd))
@@ -225,6 +235,7 @@ func main() {
 
 	// Mark blades that have not checked in for a while as offline.
 	go app.reaper()
+	go app.runBackups()
 	// Tail dnsmasq: that is how Sheath sees a blade netbooting, before any
 	// operating system runs on it. Where a sheath-site owns the wire it does
 	// the watching and reports what it saw, and doing it twice would mean two

@@ -6,6 +6,16 @@ on `main`.
 ## Unreleased
 
 ### Added
+- A **backup** of the database, written on the machine itself for the backup
+  that carries the machine away. Daily at a set hour, plus one at startup when
+  the newest is older than a day; the newest is always `sheath-latest.db`, the
+  older ones are kept by count and pruned. It is taken with `VACUUM INTO`, so
+  the copy is complete and consistent at the moment it was written — copying
+  the live file instead catches SQLite mid-write, and half a transaction
+  restores as a broken database. The copies carry every token in the system,
+  so the directory is `0700` and the files `0600`. `--backup`, `--backup-at`
+  and `--backup-keep`; an empty `--backup` switches it off. There is a button
+  on the settings page and `POST /api/v1/backup` for the same thing.
 - An **Images** page. An image is added by pasting its download address: the
   server recognises the source, fetches it, unpacks a tarball where there is
   one, installs into the image what that distribution needs, clears the

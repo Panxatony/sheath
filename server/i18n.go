@@ -283,6 +283,21 @@ var catalog = map[string]map[Lang]string{
 	"img.remove":    {LangEN: "Remove", LangDE: "Entfernen"},
 	"img.rmask":     {LangEN: "Remove %s including the mirrored file?", LangDE: "%s samt gespiegelter Datei entfernen?"},
 
+	"bk.title": {LangEN: "Backup", LangDE: "Sicherung"},
+	"bk.lead": {
+		LangEN: "A copy of the database, complete and consistent at the moment it was taken, for the backup that carries this machine away. Copying the live file instead would catch it mid-write: SQLite keeps a write-ahead log, and half of a transaction restores as a broken database.",
+		LangDE: "Eine Kopie der Datenbank, vollständig und in sich stimmig zum Zeitpunkt der Aufnahme, für die Sicherung, die diese Maschine forträgt. Die laufende Datei direkt zu kopieren erwischt sie mitten im Schreiben: SQLite führt ein Write-Ahead-Log, und eine halbe Transaktion stellt sich als kaputte Datenbank wieder her."},
+	"bk.dir":     {LangEN: "Directory", LangDE: "Verzeichnis"},
+	"bk.at":      {LangEN: "Daily at", LangDE: "Täglich um"},
+	"bk.keep":    {LangEN: "Copies kept", LangDE: "Aufbewahrte Kopien"},
+	"bk.last":    {LangEN: "Newest copy", LangDE: "Neueste Kopie"},
+	"bk.none":    {LangEN: "none yet", LangDE: "noch keine"},
+	"bk.now":     {LangEN: "Back up now", LangDE: "Jetzt sichern"},
+	"bk.done":    {LangEN: "%s written (%s)", LangDE: "%s geschrieben (%s)"},
+	"bk.off":     {LangEN: "Switched off — the server was started without a backup directory.", LangDE: "Ausgeschaltet — der Server wurde ohne Sicherungsverzeichnis gestartet."},
+	"bk.tokens":  {LangEN: "The copies carry every token in the system, so the directory is readable only by the server's own user. Point the outside backup at it; the newest is always sheath-latest.db.", LangDE: "Die Kopien enthalten sämtliche Tokens des Systems; das Verzeichnis ist deshalb nur für den Dienstbenutzer lesbar. Die äußere Sicherung zeigt darauf; die neueste heißt immer sheath-latest.db."},
+	"bk.restore": {LangEN: "Restoring: stop the server, put the copy in place of the database, remove any -wal and -shm beside it, start the server.", LangDE: "Wiederherstellen: Dienst anhalten, die Kopie an die Stelle der Datenbank legen, danebenliegende -wal und -shm entfernen, Dienst starten."},
+
 	"set.title": {LangEN: "Settings", LangDE: "Einstellungen"},
 	"set.lead": {
 		LangEN: "What the agent does on a blade, and how an installation is carried out. These apply to every blade; a BladeRunner or a single blade can be given its own values through the API.",
