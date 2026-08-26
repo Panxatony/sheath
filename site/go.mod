@@ -1,3 +1,3 @@
-module rookery-site
+module sheath-site
 
 go 1.24

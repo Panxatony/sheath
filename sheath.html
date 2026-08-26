@@ -1,4 +1,4 @@
-<title>Rookery</title>
+<title>Sheath</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
@@ -399,7 +399,7 @@ footer{
     <p class="eyebrow">
       Architecture proposal <span aria-hidden="true">/</span> Compute Blade <span aria-hidden="true">/</span> Version 2
     </p>
-    <h1>Rookery</h1>
+    <h1>Sheath</h1>
     <p class="lede">
       Ten blades, three distributions, one lifecycle. An empty blade boots into the network, pulls
       the image assigned to it onto the NVMe and reports back at its fixed address.
@@ -654,7 +654,7 @@ footer{
           and then exits. It is exactly the “utility operating system image” that Raspberry Pi
           describes in its own provisioning documentation, and the basis on which
           <code>cmprovision</code> works too. We adopt it and only replace the script with
-          <code>rookery-installer</code>, a small static Go binary using the same API library
+          <code>sheath-installer</code>, a small static Go binary using the same API library
           as the agent. A Buildroot or Alpine initramfs of our own is thus dropped entirely.
         </p>
         <p>
@@ -736,12 +736,12 @@ footer{
           identically on every systemd distribution.</p>
         </div>
         <p>Concretely that is four file operations in the mounted root partition:</p>
-<pre>install -m755 rookery-agent   $ROOT/usr/local/bin/
-install -m644 rookery.service $ROOT/etc/systemd/system/
-install -m600 blade-token.env     $ROOT/etc/rookery/
+<pre>install -m755 sheath-agent   $ROOT/usr/local/bin/
+install -m644 sheathd.service $ROOT/etc/systemd/system/
+install -m600 blade-token.env     $ROOT/etc/sheath/
 <i># Enabling a unit without a running systemd = the symlink by hand:</i>
-ln -s /etc/systemd/system/rookery.service \
-      $ROOT/etc/systemd/system/<u>multi-user.target.wants</u>/rookery.service</pre>
+ln -s /etc/systemd/system/sheathd.service \
+      $ROOT/etc/systemd/system/<u>multi-user.target.wants</u>/sheathd.service</pre>
         <p>
           The last step is the only one that is not obvious: <code>systemctl enable</code>
           creates nothing more than exactly this symlink, and you can set it yourself offline. Because
@@ -900,7 +900,7 @@ ln -s /etc/systemd/system/rookery.service \
         </p>
 
         <div class="note">
-          <p><b>Rookery owns the address management</b> and generates DHCP reservations from it:
+          <p><b>Sheath owns the address management</b> and generates DHCP reservations from it:
           <code>slot 3 → 10.10.0.13 → dhcp-host=&lt;mac&gt;,10.10.0.13,blade-03</code>.
           The same dnsmasq instance does boot options, reservation and name resolution.</p>
         </div>
@@ -937,11 +937,11 @@ ln -s /etc/systemd/system/rookery.service \
 
         <h3>Changing reservations at runtime</h3>
         <p>
-          Rookery writes the reservations from the inventory; dnsmasq reads them without a restart:
+          Sheath writes the reservations from the inventory; dnsmasq reads them without a restart:
           <code>dhcp-hostsdir=/etc/dnsmasq.d/blades/</code>, one file per blade. New or changed
           files are picked up by dnsmasq <em>by itself</em>. One drawback: deleted or
           rewritten entries only disappear with a <code>SIGHUP</code>, because host records are only
-          added dynamically. Rookery therefore additionally sends a
+          added dynamically. Sheath therefore additionally sends a
           <code>systemctl reload dnsmasq</code> after every removal.
         </p>
 
@@ -993,7 +993,7 @@ ln -s /etc/systemd/system/rookery.service \
 <b>TFTP_PREFIX</b>=0                     <i># directory = lower 4 bytes of the serial number</i>
 </pre>
         <p>
-          That takes a few minutes per blade and is never needed again afterwards. Rookery can generate
+          That takes a few minutes per blade and is never needed again afterwards. Sheath can generate
           the EEPROM configuration from the inventory, so that the bring-up is one command —
           <code>bmctl eeprom-config --slot 3</code> — and not hand editing. While you are at it,
           update the bootloader too: for initramfs files beyond about 96 MB you need
@@ -1022,7 +1022,7 @@ ln -s /etc/systemd/system/rookery.service \
               comparison.</li>
           <li><strong>Hardware stays with the <code>compute-blade-agent</code></strong> (Go, Apache-2.0):
               LEDs, fan, button, critical mode on over temperature, Prometheus on <code>:9666</code>,
-              gRPC with mTLS. Rookery only writes its <code>config.yaml</code> and calls its API for
+              gRPC with mTLS. Sheath only writes its <code>config.yaml</code> and calls its API for
               <em>identify</em>.</li>
         </ul>
       </section>
@@ -1083,7 +1083,7 @@ ln -s /etc/systemd/system/rookery.service \
         <p>
           ntfy, a webhook or e-mail are enough for ten blades. Prometheus and Alertmanager are only
           worth it if they are in the house anyway; the <code>compute-blade-agent</code> already
-          supplies the metrics in the right format, Rookery provides the target list via HTTP SD.
+          supplies the metrics in the right format, Sheath provides the target list via HTTP SD.
         </p>
       </section>
 
@@ -1181,7 +1181,7 @@ GET     /api/v1/prometheus/targets       <i>HTTP Service Discovery</i>
           <li><strong>MaaS or Tinkerbell.</strong> Full-blown bare-metal provisioning including
               UEFI PXE, oversized for ten blades.</li>
           <li><strong>Ansible.</strong> No self-enrollment, no heartbeat, needs SSH and known
-              addresses. Can be added later; Rookery then supplies the dynamic inventory.</li>
+              addresses. Can be added later; Sheath then supplies the dynamic inventory.</li>
           <li><strong>Network configuration in the agent.</strong> Made superfluous by the DHCP
               reservation — and that was the most distro-dependent part.</li>
         </ul>
@@ -1216,7 +1216,7 @@ GET     /api/v1/prometheus/targets       <i>HTTP Service Discovery</i>
           <div class="phase">
             <span class="n">Step 3</span>
             <h3>Netboot chain</h3>
-            <p>TFTP per serial number, scriptexecute, <code>rookery-installer</code>, image delivery
+            <p>TFTP per serial number, scriptexecute, <code>sheath-installer</code>, image delivery
                over HTTP.</p>
             <span class="out">→ plugging it in is enough, distribution from a dropdown</span>
           </div>
@@ -1245,7 +1245,7 @@ GET     /api/v1/prometheus/targets       <i>HTTP Service Discovery</i>
         <p class="h2-kicker">To be settled before the start</p>
         <h2>Open points, by urgency</h2>
         <div class="note">
-          <p><b>Settled by the research:</b> Rookery <em>has to</em> take over DHCP for the blade VLAN,
+          <p><b>Settled by the research:</b> Sheath <em>has to</em> take over DHCP for the blade VLAN,
           because proxy DHCP hands out no addresses. On the CM4 the MAC <em>cannot</em> be derived
           from the serial number — instead assign it yourself via <code>MAC_ADDRESS</code>. There is no
           one-shot netboot on the CM4. The CM4 needs no <code>config.txt</code> change for

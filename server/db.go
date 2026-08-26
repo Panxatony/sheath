@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS settings (
 -- only place DHCP reaches.
 --
 -- "local" marks the site whose network presence this process serves itself.
--- Once rookery-site is split out, there will be none left.
+-- Once sheath-site is split out, there will be none left.
 CREATE TABLE IF NOT EXISTS sites (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT    NOT NULL UNIQUE,
@@ -919,7 +919,7 @@ func (a *App) getSite(id int64) (*Site, error) {
 }
 
 // localSite is the site whose network presence this process serves itself.
-// Until rookery-site is split out there is exactly one.
+// Until sheath-site is split out there is exactly one.
 func (a *App) localSite() (*Site, error) {
 	st, err := scanSite(a.db.QueryRow(`SELECT ` + siteCols + ` FROM sites WHERE local=1 ORDER BY id LIMIT 1`))
 	if err == nil {

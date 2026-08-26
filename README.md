@@ -1,8 +1,8 @@
-# Rookery
+# Sheath
 
 Management for [Compute Blades](https://docs.computeblade.com/) in BladeRunner chassis.
 
-Slot in an empty blade, pick an image in the interface — Rookery does the rest:
+Slot in an empty blade, pick an image in the interface — Sheath does the rest:
 netboot, write the image to the NVMe, seed credentials and the agent, hand out a
 fixed address, and watch it from then on.
 
@@ -22,10 +22,12 @@ blade, not a build process. Ubuntu, Debian and DietPi share the same flow.
 ## Layout
 
 ```
-server/      Go, SQLite, web interface and REST API      → /srv/rookery/rookery
-agent/       Go, runs on every blade                     → /usr/local/bin/rookery-agent
+server/      Go, SQLite, web interface and REST API      → /srv/sheath/sheathd
+site/        Go, one per site: DHCP reservations,        → /usr/local/bin/sheath-site
+             netboot detection, image cache, relay
+agent/       Go, runs on every blade                     → /usr/local/bin/sheath-agent
 installer/   Go, runs in the mini OS during netboot      → inside boot.img
-tools/       pxeprobe.py — checks whether a blade is allowed to netboot
+tools/       mirror, prepare and publish images; build the netboot payload
 assets/      Mark (SVG)
 ```
 
@@ -35,17 +37,23 @@ Alongside those: `docs/ARCHITECTURE.md` (why it is built this way) and `docs/INS
 ## Building
 
 ```sh
-cd server    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o rookery .
-cd agent     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o rookery-agent .
-cd installer && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o rookery-installer .
+cd server    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o sheathd .
+cd site      && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o sheath-site .
+cd agent     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o sheath-agent .
+cd installer && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o sheath-installer .
 ```
 
-All static, arm64, no runtime dependencies. The agent needs 1 MB of memory.
+All static, no runtime dependencies; arm64 for the blades, and the two server
+parts build for amd64 as well. The agent needs 1 MB of memory.
+
+The server binary is `sheathd`, not `sheath` — the plain name is kept free for
+a command-line client.
 
 ## The name
 
-A *rook* is the chess piece that looks like a tower — the silhouette of a rack. A
-*rookery* is also a colony of many nests of the same kind.
+A sheath is what a blade lives in when it is not in use: it holds the blade,
+keeps its edge, and gives it a place. That is the whole job here — the blades
+do the work, and this keeps them in order.
 
 ## License
 
@@ -54,5 +62,5 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 ## Trademarks
 
 BladeRunner and Compute Blade are trademarks of [Uptime Lab](https://docs.computeblade.com/).
-Rookery is not affiliated with Uptime Lab; the names refer here to the hardware
+Sheath is not affiliated with Uptime Lab; the names refer here to the hardware
 being managed.

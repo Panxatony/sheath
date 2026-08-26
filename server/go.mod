@@ -1,4 +1,4 @@
-module rookery
+module sheathd
 
 go 1.24
 

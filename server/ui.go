@@ -1355,14 +1355,20 @@ func stageLED(st string) string {
 
 // ── Templates ────────────────────────────────────────────────────────
 
-// markSVG is the mark: a crenellated tower — the chess rook, and at the same
-// time a rack seen head-on. The three cut-outs are the slots. A single path
-// with evenodd so the slots are real holes and the mark sits on any
-// background; currentColor takes the text colour, and with it dark mode.
+// markSVG is the mark: a sheath with a blade in it — tang and guard above,
+// the scabbard below, and three cut-outs across it that read as slots, the
+// same way a BladeRunner does seen from the front. One path with
+// fill-rule="evenodd", so the slots are holes rather than painted shapes:
+// the mark then sits on any background and takes the text colour, dark mode
+// included.
 const markSVG = `<svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
-	`<path fill="currentColor" fill-rule="evenodd" d="M3.2 2 H6.6 V4.4 H9.2 V2 H12.8 V4.4 H15.4 V2 ` +
-	`H18.8 V7.6 H16.8 V18.6 H19 V21.8 H3 V18.6 H5.2 V7.6 H3.2 Z ` +
-	`M7 9.6 H15 V11.1 H7 Z M7 12.4 H15 V13.9 H7 Z M7 15.2 H15 V16.7 H7 Z"/></svg>`
+	`<path fill="currentColor" fill-rule="evenodd" d="` +
+	`M10.9 1.6 H13.1 V5.2 H16.4 V7.2 H13.1 V8.6 H16.9 L18.4 10.6 ` +
+	`V19.2 L15.6 22.4 H8.4 L5.6 19.2 V10.6 L7.1 8.6 H10.9 V7.2 ` +
+	`H7.6 V5.2 H10.9 Z ` +
+	`M8.2 11.6 H15.8 V13.2 H8.2 Z ` +
+	`M8.2 14.5 H15.8 V16.1 H8.2 Z ` +
+	`M8.2 17.4 H15.8 V19 H8.2 Z"/></svg>`
 
 var tmplFuncs = template.FuncMap{
 	"mark": func() template.HTML { return template.HTML(markSVG) },
@@ -1630,7 +1636,7 @@ display:flex;justify-content:space-between;flex-wrap:wrap;gap:.8rem}
 
 const headHTML = `<!doctype html><html lang="{{.L}}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Rookery</title>{{if .Refresh}}
+<title>Sheath</title>{{if .Refresh}}
 <script>
 // Not <meta http-equiv="refresh">: that timer keeps its own navigation to
 // this page pending, and if the reader clicks into a BladeRunner just as it
@@ -2115,7 +2121,7 @@ var loginTmpl = template.Must(template.New("login").Funcs(tmplFuncs).Parse(headH
   </form>
   <p class="hint" style="margin:1.4rem 0 0">{{th .L "login.hint"}}</p>
   <pre style="margin:.6rem 0 0;padding:.6rem .7rem;background:var(--surface-2);border-radius:3px;
-    font:.78rem/1.5 ui-monospace,monospace;overflow-x:auto;color:var(--ink-2)"><code>sudo cat /srv/rookery/data/admin-token</code></pre>
+    font:.78rem/1.5 ui-monospace,monospace;overflow-x:auto;color:var(--ink-2)"><code>sudo cat /srv/sheath/data/admin-token</code></pre>
 </div></div>
 </div></div></body></html>`))
 
@@ -2227,7 +2233,7 @@ func topoSVG(l Lang, sites []topoSite, baseURL string) template.HTML {
 	// The centre.
 	fmt.Fprintf(&b, `<g class="node centre"><rect x="20" y="%.1f" width="250" height="96" rx="4"/>`,
 		centreY-48)
-	fmt.Fprintf(&b, `<text class="t1" x="40" y="%.1f">Rookery</text>`, centreY-20)
+	fmt.Fprintf(&b, `<text class="t1" x="40" y="%.1f">Sheath</text>`, centreY-20)
 	fmt.Fprintf(&b, `<text class="t2" x="40" y="%.1f">%s</text>`, centreY+2, esc(T(l, "map.centre")))
 	fmt.Fprintf(&b, `<text class="t3" x="40" y="%.1f">%s</text></g>`, centreY+26, esc(shortURL(baseURL)))
 

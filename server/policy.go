@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Policy is the set of numbers that decide when Rookery calls something a
+// Policy is the set of numbers that decide when Sheath calls something a
 // problem, and how long it remembers things.
 //
 // They used to stand in the code, which is the right place for a constant and

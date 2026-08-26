@@ -276,7 +276,7 @@ func (r *relay) forward(req *http.Request, body []byte) (*http.Response, error) 
 	// Say who really asked, so the centre's log does not read as if every
 	// blade in the field were this one machine.
 	out.Header.Set("X-Forwarded-For", clientIP(req))
-	out.Header.Set("X-Rookery-Site", fmt.Sprintf("%d", r.s.cfg.SiteID))
+	out.Header.Set("X-Sheath-Site", fmt.Sprintf("%d", r.s.cfg.SiteID))
 	return r.client.Do(out)
 }
 

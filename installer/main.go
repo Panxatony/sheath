@@ -1,8 +1,8 @@
-// rookery-installer runs inside the mini-OS loaded over the network.
+// sheath-installer runs inside the mini-OS loaded over the network.
 //
 // It replaces the Raspberry Pi Imager as the last step of the initramfs:
 // instead of asking someone at the HDMI cable for device, operating system
-// and target, it fetches both answers from the Rookery server and writes the
+// and target, it fetches both answers from the Sheath server and writes the
 // assigned image to the NVMe.
 //
 // The initramfs ships busybox, udev and dhcpcd, but neither curl nor zstd, xz
@@ -134,7 +134,7 @@ func run() error {
 	logf("")
 
 	if server == "" {
-		return errors.New("no server address in /proc/cmdline (rookery_server=...)")
+		return errors.New("no server address in /proc/cmdline (sheath_server=...)")
 	}
 
 	c := &client{base: strings.TrimRight(server, "/"), serial: serial}
@@ -252,8 +252,24 @@ func (c *client) runWipe(job *provisionResp, target string) error {
 
 	c.report("wiped", 100, "")
 	logf("")
-	logf("The NVMe is empty. This blade can be pulled and put in")
-	logf("another BladeRunner — Rookery has taken it out of its slot.")
+	logf("The NVMe is empty. Sheath has taken this blade out of its slot.")
+
+	// Halting is the right default: an erased blade is usually one somebody
+	// is about to pull. But a blade that stays where it is has no reason to
+	// wait for hands — restarting puts it back in the installer, where it
+	// asks every thirty seconds and can be given a new image without anyone
+	// walking to the rack.
+	if job.Opts.After == "reboot" {
+		delay := job.Opts.RebootDelay
+		if delay <= 0 {
+			delay = 5
+		}
+		logf("Restarting in %d seconds — it will wait in the installer.", delay)
+		time.Sleep(time.Duration(delay) * time.Second)
+		reboot()
+		return nil
+	}
+	logf("It can be pulled and put in another BladeRunner.")
 	logf("")
 	logf("Nothing else will happen here.")
 	for {
@@ -290,7 +306,7 @@ func explainIdle(e *idleErr) {
 		logf("  single time.")
 	} else {
 		logf("No system is detectable on %s.", defaultTarget)
-		logf("Choose \"Install now\" in the Rookery interface — this blade")
+		logf("Choose \"Install now\" in the Sheath interface — this blade")
 		logf("keeps asking and starts on its own, no restart needed.")
 	}
 	logf("")
@@ -322,7 +338,7 @@ func banner() {
 	// The box is drawn with 36 characters between the corners, so the line
 	// has to be padded to exactly that or the frame goes crooked on a console
 	// nobody can resize.
-	logf("  │%-36s│", "  Rookery Installer "+version)
+	logf("  │%-36s│", "  Sheath Installer "+version)
 	logf("  └────────────────────────────────────┘")
 	logf("")
 }
@@ -373,7 +389,7 @@ func serverFromCmdline() string {
 		return ""
 	}
 	for _, f := range strings.Fields(string(b)) {
-		for _, key := range []string{"rookery_server=", "bm_server="} {
+		for _, key := range []string{"sheath_server=", "bm_server="} {
 			if v, ok := strings.CutPrefix(f, key); ok {
 				return v
 			}
@@ -609,7 +625,7 @@ func (c *client) waitForJob(mac string) (*provisionResp, error) {
 		if !announced {
 			logf("")
 			logf("This blade is enrolled and waiting.")
-			logf("Choose an image in the Rookery interface.")
+			logf("Choose an image in the Sheath interface.")
 			if job.Message != "" {
 				logf("  %s", job.Message)
 			}
@@ -1026,7 +1042,7 @@ func (c *client) seed(job *provisionResp, target string) error {
 	}
 	defer syscall.Unmount(mnt, 0)
 
-	dir := filepath.Join(mnt, "etc", "rookery")
+	dir := filepath.Join(mnt, "etc", "sheath")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -1035,14 +1051,14 @@ func (c *client) seed(job *provisionResp, target string) error {
 		server = c.base
 	}
 	env := fmt.Sprintf(
-		"# placed by rookery-installer during provisioning\n"+
-			"ROOKERY_SERVER=%s\nROOKERY_SERIAL=%s\nROOKERY_TOKEN=%s\n"+
-			"ROOKERY_IMAGE=%s\nROOKERY_INSTALLED=%s\n",
+		"# placed by sheath-installer during provisioning\n"+
+			"SHEATH_SERVER=%s\nSHEATH_SERIAL=%s\nSHEATH_TOKEN=%s\n"+
+			"SHEATH_IMAGE=%s\nSHEATH_INSTALLED=%s\n",
 		server, c.serial, job.Token, job.Image, time.Now().UTC().Format(time.RFC3339))
 	if err := os.WriteFile(filepath.Join(dir, "agent.env"), []byte(env), 0o600); err != nil {
 		return err
 	}
-	logf("Seed placed: %s/etc/rookery/agent.env", part)
+	logf("Seed placed: %s/etc/sheath/agent.env", part)
 
 	// Place SSH keys for root directly. That is the one path that works on
 	// every distribution — Ubuntu, Debian and DietPi all permit key-based
@@ -1095,7 +1111,7 @@ func seedRootKeys(mnt string, keys []string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	body := "# placed by rookery-installer\n" + strings.Join(keys, "\n") + "\n"
+	body := "# placed by sheath-installer\n" + strings.Join(keys, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "authorized_keys"), []byte(body), 0o600); err != nil {
 		return err
 	}
@@ -1128,7 +1144,7 @@ func (c *client) seedCloudInit(job *provisionResp, target string) error {
 	// on Ubuntu the "ubuntu" account would be gone.
 	var b strings.Builder
 	b.WriteString("#cloud-config\n")
-	b.WriteString("# generated by rookery-installer during provisioning\n")
+	b.WriteString("# generated by sheath-installer during provisioning\n")
 	if job.Hostname != "" {
 		fmt.Fprintf(&b, "hostname: %s\nmanage_etc_hosts: true\n", job.Hostname)
 	}
@@ -1198,7 +1214,7 @@ func partitionsOf(target string) ([]string, error) {
 // systemd. Offline, "enabling" means nothing more than creating the symlink
 // systemctl enable would create.
 func (c *client) installAgent(job *provisionResp, mnt string) error {
-	resp, err := c.http().Get(c.base + "/agent/rookery-agent-arm64")
+	resp, err := c.http().Get(c.base + "/agent/sheath-agent-arm64")
 	if err != nil {
 		return err
 	}
@@ -1210,7 +1226,7 @@ func (c *client) installAgent(job *provisionResp, mnt string) error {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(binDir, "rookery-agent"),
+	f, err := os.OpenFile(filepath.Join(binDir, "sheath-agent"),
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 	if err != nil {
 		return err
@@ -1221,16 +1237,16 @@ func (c *client) installAgent(job *provisionResp, mnt string) error {
 	}
 	f.Close()
 
-	unit := "[Unit]\nDescription=Rookery agent\nAfter=network-online.target\n" +
+	unit := "[Unit]\nDescription=Sheath agent\nAfter=network-online.target\n" +
 		"Wants=network-online.target\n\n[Service]\nType=simple\n" +
-		"EnvironmentFile=/etc/rookery/agent.env\n" +
-		"ExecStart=/usr/local/bin/rookery-agent\nRestart=always\nRestartSec=10\n\n" +
+		"EnvironmentFile=/etc/sheath/agent.env\n" +
+		"ExecStart=/usr/local/bin/sheath-agent\nRestart=always\nRestartSec=10\n\n" +
 		"[Install]\nWantedBy=multi-user.target\n"
 	sysDir := filepath.Join(mnt, "etc", "systemd", "system")
 	if err := os.MkdirAll(sysDir, 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(sysDir, "rookery-agent.service"),
+	if err := os.WriteFile(filepath.Join(sysDir, "sheath-agent.service"),
 		[]byte(unit), 0o644); err != nil {
 		return err
 	}
@@ -1238,9 +1254,9 @@ func (c *client) installAgent(job *provisionResp, mnt string) error {
 	if err := os.MkdirAll(wants, 0o755); err != nil {
 		return err
 	}
-	link := filepath.Join(wants, "rookery-agent.service")
+	link := filepath.Join(wants, "sheath-agent.service")
 	_ = os.Remove(link)
-	if err := os.Symlink("/etc/systemd/system/rookery-agent.service", link); err != nil {
+	if err := os.Symlink("/etc/systemd/system/sheath-agent.service", link); err != nil {
 		return err
 	}
 	logf("Agent installed and enabled.")

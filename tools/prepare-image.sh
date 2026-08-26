@@ -8,7 +8,7 @@
 #
 # Why here and not on the blade: the Debian raspi image ships neither
 # openssh-server nor cloud-init, so a blade installed from it has exactly one
-# door — the Rookery agent. One door is one door too few when the question is
+# door — the Sheath agent. One door is one door too few when the question is
 # why the agent did not start. Doing it once per image also beats doing it
 # once per blade.
 #
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-ROOT=${ROOKERY_ROOT:-/srv/rookery}
+ROOT=${SHEATH_ROOT:-/srv/sheath}
 DIR="$ROOT/images"
 ID=${1:?usage: prepare-image.sh <catalogue-id> [package ...]}
 shift
@@ -26,7 +26,7 @@ PKGS=("$@")
 
 say() { printf '[%s] %s\n' "$(date +%T)" "$1"; }
 
-FILE=$(sudo sqlite3 "$ROOT/data/rookery.db" "SELECT local FROM images WHERE id='$ID';")
+FILE=$(sudo sqlite3 "$ROOT/data/sheath.db" "SELECT local FROM images WHERE id='$ID';")
 [ -n "$FILE" ] || { echo "no local file for $ID in the catalogue" >&2; exit 1; }
 SRC="$DIR/$FILE"
 
@@ -98,7 +98,7 @@ sudo rm -f "$MNT/var/lib/dbus/machine-id"
 # though: sshd refuses to start without keys and Debian's sshd-keygen does not
 # reliably step in, so a unit that regenerates them takes their place.
 sudo rm -f "$MNT"/etc/ssh/ssh_host_*
-sudo tee "$MNT/etc/systemd/system/rookery-sshkeys.service" >/dev/null <<'UNIT'
+sudo tee "$MNT/etc/systemd/system/sheath-sshkeys.service" >/dev/null <<'UNIT'
 [Unit]
 Description=Generate SSH host keys if they are missing
 Before=ssh.service ssh.socket
@@ -112,9 +112,9 @@ ExecStart=/usr/bin/ssh-keygen -A
 [Install]
 WantedBy=multi-user.target
 UNIT
-sudo chroot "$MNT" systemctl enable rookery-sshkeys.service >/dev/null 2>&1 ||
-  sudo ln -sf /etc/systemd/system/rookery-sshkeys.service \
-    "$MNT/etc/systemd/system/multi-user.target.wants/rookery-sshkeys.service"
+sudo chroot "$MNT" systemctl enable sheath-sshkeys.service >/dev/null 2>&1 ||
+  sudo ln -sf /etc/systemd/system/sheath-sshkeys.service \
+    "$MNT/etc/systemd/system/multi-user.target.wants/sheath-sshkeys.service"
 # The package's own enablement does not survive every chroot, so make sure.
 sudo chroot "$MNT" systemctl enable ssh.service >/dev/null 2>&1 ||
   sudo ln -sf /lib/systemd/system/ssh.service \
@@ -135,8 +135,8 @@ SZ=$(stat -c%s "$DIR/$FILE")
 say "$ID: $((SZ / 1048576)) MB, sha256 $SUM"
 
 T=$(sudo cat "$ROOT/data/admin-token")
-URL=$(sudo sqlite3 "$ROOT/data/rookery.db" "SELECT url FROM images WHERE id='$ID';")
-OS=$(sudo sqlite3 "$ROOT/data/rookery.db" "SELECT os_id FROM images WHERE id='$ID';")
+URL=$(sudo sqlite3 "$ROOT/data/sheath.db" "SELECT url FROM images WHERE id='$ID';")
+OS=$(sudo sqlite3 "$ROOT/data/sheath.db" "SELECT os_id FROM images WHERE id='$ID';")
 curl -sS -X POST -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
   -d "{\"id\":\"$ID\",\"url\":\"$URL\",\"local\":\"$FILE\",\"sha256\":\"$SUM\",\"bytes\":$SZ,\"seed\":\"generic\",\"os_id\":\"$OS\",\"notes\":\"mirrored locally, prepared: ${PKGS[*]}\"}" \
   http://127.0.0.1:8080/api/v1/images >/dev/null

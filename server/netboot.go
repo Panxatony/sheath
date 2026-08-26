@@ -93,7 +93,7 @@ var (
 	// "DHCPDISCOVER(eth0) e4:5f:01:11:22:33" — no address yet
 	reDHCPDiscover = regexp.MustCompile(
 		`DHCP(?:DISCOVER|REQUEST)\([^)]*\)\s+([0-9a-fA-F:]{17})`)
-	// dnsmasq-tftp: "sent /srv/rookery/tftp/boot.img to 10.0.0.210"
+	// dnsmasq-tftp: "sent /srv/sheath/tftp/boot.img to 10.0.0.210"
 	reTFTPSent = regexp.MustCompile(`sent\s+(\S+)\s+to\s+(\d+\.\d+\.\d+\.\d+)`)
 	// "<xid> vendor class: PXEClient:Arch:00000:UNDI:002001"
 	reVendor = regexp.MustCompile(`dnsmasq-dhcp\[\d+\]:\s+(\S+)\s+vendor class:\s*(.+)$`)

@@ -1,6 +1,6 @@
-# Rookery — Installation
+# Sheath — Installation
 
-How to put Rookery on a server, wire up DHCP/TFTP for netboot, bring up the blades
+How to put Sheath on a server, wire up DHCP/TFTP for netboot, bring up the blades
 once over USB, and check that all of it works. It ends with the traps that this
 setup has actually run into, as symptom → cause → fix.
 
@@ -9,11 +9,11 @@ setup has actually run into, as symptom → cause → fix.
 - The blade network is **`10.0.0.0/24`** throughout — an example. Any /24 works;
   substitute your own prefix everywhere `10.0.0` appears, including the
   `-net-base` flag.
-- The server is called **`rookery-server`** and holds **`10.0.0.10`**, the gateway
+- The server is called **`sheath-server`** and holds **`10.0.0.10`**, the gateway
   `10.0.0.1`.
 - `d8:3a:dd:xx:xx:xx` stands for a blade's real MAC address, `10000000xxxxxxxx`
   for a CM4 serial number. Both are placeholders; nothing derives from them.
-- `/srv/rookery` is the documented default for everything Rookery owns. It is a
+- `/srv/sheath` is the documented default for everything Sheath owns. It is a
   path, not a requirement — but the flags, the unit and the scripts all assume it.
 
 ---
@@ -28,18 +28,18 @@ setup has actually run into, as symptom → cause → fix.
 | OS | Debian family (`apt`, systemd). Developed against Raspberry Pi OS on Debian 13 |
 | Disk | Tens of GB for the image mirror. **Not the eMMC** — see below |
 | Packages | `dnsmasq`, plus for building the netboot payload: `golang` (1.24 or newer), `dosfstools`, `mtools`, `cpio`, `zstd`, `python3` |
-| Ports | 67/udp DHCP, 69/udp TFTP, 53 DNS, 8080/tcp Rookery |
+| Ports | 67/udp DHCP, 69/udp TFTP, 53 DNS, 8080/tcp Sheath |
 
 > **Do not install into the eMMC of a CM4.** An 8–32 GB eMMC carrying a full
-> Raspberry Pi OS desktop image is already close to full before Rookery adds
+> Raspberry Pi OS desktop image is already close to full before Sheath adds
 > anything: Chromium and Firefox alone take ~740 MB, locales another 340 MB.
-> Put `/srv/rookery` on the NVMe and leave the eMMC alone. The Go build caches
+> Put `/srv/sheath` on the NVMe and leave the eMMC alone. The Go build caches
 > in particular must be relocated (§3.2) — otherwise the first `go build` fills
 > the eMMC.
 
 ### Network
 
-Rookery needs a segment where **it is the DHCP server**. That is not a
+Sheath needs a segment where **it is the DHCP server**. That is not a
 preference, it follows from the design:
 
 - dnsmasq's proxy-DHCP mode supplies PXE information only and hands out no
@@ -70,14 +70,14 @@ outright.
 
 ## 2. Address plan
 
-Rookery derives addresses, MACs and names from the position of a blade. Each
+Sheath derives addresses, MACs and names from the position of a blade. Each
 BladeRunner gets a block of 20 addresses reserved regardless of its actual size,
 so the addresses stay stable if the rack is later replaced by a bigger one. Five
 racks fit into a /24 that way.
 
 ```text
 .1              gateway
-.10             rookery-server
+.10             sheath-server
 .101 – .110     rack 1  (10 slots, offset 100)
 .121 – .124     rack 2  ( 4 slots, offset 120)
 .141 – .160     rack 3  (20 slots, offset 140)
@@ -117,22 +117,22 @@ by hand, such as `storage-01`, stays untouched, and so does a vendor MAC.
 ### 3.1 User and directories
 
 ```sh
-sudo useradd --system --home /srv/rookery --shell /usr/sbin/nologin rookery
-sudo install -d -o rookery -g rookery /srv/rookery/{data,images,agent,tftp,logs,build,go}
-sudo install -d /etc/rookery/dhcp-hosts
-sudo chown rookery:rookery /etc/rookery/dhcp-hosts
+sudo useradd --system --home /srv/sheath --shell /usr/sbin/nologin sheath
+sudo install -d -o sheath -g sheath /srv/sheath/{data,images,agent,tftp,logs,build,go}
+sudo install -d /etc/sheath/dhcp-hosts
+sudo chown sheath:sheath /etc/sheath/dhcp-hosts
 ```
 
 The layout that the flags, the unit and `tools/*.sh` expect:
 
 ```text
-/srv/rookery/
-├── rookery              the server binary
-├── data/                SQLite database + admin-token (0600, owned by rookery)
+/srv/sheath/
+├── sheath              the server binary
+├── data/                SQLite database + admin-token (0600, owned by sheath)
 ├── images/              OS images, served to the blades over HTTP
-├── agent/               rookery-agent, copied into every image offline
+├── agent/               sheath-agent, copied into every image offline
 ├── tftp/                netboot root, ~36 MB
-├── logs/                dnsmasq.log — Rookery follows this file
+├── logs/                dnsmasq.log — Sheath follows this file
 ├── build/               ramdisk and boot.img while they are being built
 ├── src-installer/       installer sources, if you build on the server
 ├── go/                  GOCACHE, GOMODCACHE, GOPATH
@@ -144,46 +144,46 @@ The layout that the flags, the unit and `tools/*.sh` expect:
 On a CM4 this is not optional. Put it in the build shell's `~/.profile` as well:
 
 ```sh
-export GOCACHE=/srv/rookery/go/cache GOMODCACHE=/srv/rookery/go/mod \
-       GOPATH=/srv/rookery/go/path TMPDIR=/srv/rookery/tmp
+export GOCACHE=/srv/sheath/go/cache GOMODCACHE=/srv/sheath/go/mod \
+       GOPATH=/srv/sheath/go/path TMPDIR=/srv/sheath/tmp
 ```
 
 ```sh
-cd server    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o rookery .
-cd ../agent  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o rookery-agent .
+cd server    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o sheath .
+cd ../agent  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o sheath-agent .
 ```
 
 All static, no runtime dependencies. Sizes for orientation: server ~11.5 MB,
 agent ~5.8 MB (needs about 1 MB of memory at runtime), installer ~6 MB.
 
 ```sh
-sudo install -o rookery -g rookery -m 0755 server/rookery      /srv/rookery/rookery
-sudo install -o rookery -g rookery -m 0755 agent/rookery-agent /srv/rookery/agent/rookery-agent
+sudo install -o sheath -g sheath -m 0755 server/sheath      /srv/sheath/sheathd
+sudo install -o sheath -g sheath -m 0755 agent/sheath-agent /srv/sheath/agent/sheath-agent
 ```
 
-The agent binary goes into `/srv/rookery/agent/` because the installer copies it
+The agent binary goes into `/srv/sheath/agent/` because the installer copies it
 straight into a freshly written root partition, offline, before the blade has
 ever run its own userland.
 
 ### 3.3 The systemd unit
 
-`/etc/systemd/system/rookery.service`:
+`/etc/systemd/system/sheathd.service`:
 
 ```ini
 [Unit]
-Description=Rookery
+Description=Sheath
 Wants=network-online.target
 After=network-online.target dnsmasq.service
 
 [Service]
-User=rookery
-Group=rookery
-WorkingDirectory=/srv/rookery
-ExecStart=/srv/rookery/rookery -net-base 10.0.0
+User=sheath
+Group=sheath
+WorkingDirectory=/srv/sheath
+ExecStart=/srv/sheath/sheathd -net-base 10.0.0
 Restart=on-failure
 RestartSec=5
 ProtectSystem=full
-ReadWritePaths=/srv/rookery /etc/rookery/dhcp-hosts
+ReadWritePaths=/srv/sheath /etc/sheath/dhcp-hosts
 # Deliberately NOT NoNewPrivileges: the dnsmasq reload goes through sudo (§3.4).
 
 [Install]
@@ -196,48 +196,48 @@ database as the `net_base` setting. The other defaults it assumes:
 | Flag | Default |
 |---|---|
 | `-addr` | `:8080` |
-| `-db` | `/srv/rookery/data/rookery.db` |
-| `-images` | `/srv/rookery/images` |
-| `-agent` | `/srv/rookery/agent` |
+| `-db` | `/srv/sheath/data/sheath.db` |
+| `-images` | `/srv/sheath/images` |
+| `-agent` | `/srv/sheath/agent` |
 | `-base-url` | `http://<net-base>.10:8080` — the URL the blades use |
-| `-dnsmasq-log` | `/srv/rookery/logs/dnsmasq.log` |
+| `-dnsmasq-log` | `/srv/sheath/logs/dnsmasq.log` |
 
-The service runs as the system user `rookery`, not as root. Port 8080 needs no
+The service runs as the system user `sheath`, not as root. Port 8080 needs no
 privileges.
 
 ### 3.4 The sudoers line
 
-Rookery needs exactly one privileged action: telling dnsmasq to re-read its
-reservations. `/etc/sudoers.d/rookery`, mode `0440`:
+Sheath needs exactly one privileged action: telling dnsmasq to re-read its
+reservations. `/etc/sudoers.d/sheath`, mode `0440`:
 
 ```text
-rookery ALL=(root) NOPASSWD: /usr/bin/systemctl reload dnsmasq
+sheath ALL=(root) NOPASSWD: /usr/bin/systemctl reload dnsmasq
 ```
 
 ```sh
-sudo visudo -cf /etc/sudoers.d/rookery
+sudo visudo -cf /etc/sudoers.d/sheath
 ```
 
 Nothing else is granted. If both the direct call and the `sudo` call fail,
-Rookery logs a warning and carries on — dnsmasq picks up *new* files by itself.
+Sheath logs a warning and carries on — dnsmasq picks up *new* files by itself.
 What is lost without the reload is the removal of entries, which is exactly the
 netboot switch (§3.6).
 
 ### 3.5 dnsmasq
 
-Three files are involved, and the split between them matters: **`rookery.conf`
+Three files are involved, and the split between them matters: **`sheath.conf`
 is written by hand and never touched by the software; everything blade-specific
 is generated into `dhcp-hosts/`.**
 
-- `/etc/dnsmasq.d/rookery.conf` — DHCP, DNS, TFTP, netboot gating; maintained by hand
-- `/etc/rookery/dhcp-hosts/` — one file per blade, **generated by Rookery**
-- `/etc/sudoers.d/rookery` — the single allowed command (§3.4)
+- `/etc/dnsmasq.d/sheath.conf` — DHCP, DNS, TFTP, netboot gating; maintained by hand
+- `/etc/sheath/dhcp-hosts/` — one file per blade, **generated by Sheath**
+- `/etc/sudoers.d/sheath` — the single allowed command (§3.4)
 
-`/etc/dnsmasq.d/rookery.conf`:
+`/etc/dnsmasq.d/sheath.conf`:
 
 ```ini
-# Rookery — blade segment. Blade-specific entries live in
-# /etc/rookery/dhcp-hosts/ and are generated, not edited.
+# Sheath — blade segment. Blade-specific entries live in
+# /etc/sheath/dhcp-hosts/ and are generated, not edited.
 
 interface=eth0                 # the blade segment only, never the uplink
 bind-interfaces
@@ -254,32 +254,32 @@ dhcp-range=10.0.0.210,10.0.0.240,1h
 dhcp-option=option:router,10.0.0.1
 dhcp-option=option:dns-server,10.0.0.10
 
-# Reservations: one file per blade, written by Rookery from the inventory.
-dhcp-hostsdir=/etc/rookery/dhcp-hosts
+# Reservations: one file per blade, written by Sheath from the inventory.
+dhcp-hostsdir=/etc/sheath/dhcp-hosts
 
 # Netboot chain. With TFTP enabled dnsmasq points the boot server at itself;
 # the boot file name is irrelevant, because the CM4 bootloader sits in EEPROM
 # and asks for start4.elf on its own.
 enable-tftp
-tftp-root=/srv/rookery/tftp
+tftp-root=/srv/sheath/tftp
 
 # The netboot switch (§3.6). Unknown blades may always netboot, so that they
-# can enroll; known blades only when Rookery has tagged them.
+# can enroll; known blades only when Sheath has tagged them.
 pxe-service=tag:!known,0,"Raspberry Pi Boot"
 pxe-service=tag:bootnet,0,"Raspberry Pi Boot"
 
-# Rookery reads this log — it is how a booting blade becomes visible before
+# Sheath reads this log — it is how a booting blade becomes visible before
 # any operating system runs on it. log-dhcp is required: without it the
 # vendor class is not logged, and that is what tells a netboot apart from a
 # plain address lease.
 log-dhcp
-log-facility=/srv/rookery/logs/dnsmasq.log
+log-facility=/srv/sheath/logs/dnsmasq.log
 ```
 
-`/etc/logrotate.d/rookery-dnsmasq`:
+`/etc/logrotate.d/sheath-dnsmasq`:
 
 ```text
-/srv/rookery/logs/dnsmasq.log {
+/srv/sheath/logs/dnsmasq.log {
     daily
     rotate 7
     missingok
@@ -289,12 +289,12 @@ log-facility=/srv/rookery/logs/dnsmasq.log
 }
 ```
 
-`copytruncate` is deliberate: Rookery follows the file by offset, and a rename
+`copytruncate` is deliberate: Sheath follows the file by offset, and a rename
 would leave the watcher reading a file nobody writes to any more.
 
 ```sh
 sudo systemctl enable --now dnsmasq
-sudo systemctl enable --now rookery
+sudo systemctl enable --now sheath
 ```
 
 #### What a generated reservation looks like
@@ -302,7 +302,7 @@ sudo systemctl enable --now rookery
 One file per blade, named `blade-<serial>.conf`:
 
 ```text
-# Rookery – generated, do not edit by hand
+# Sheath – generated, do not edit by hand
 # Blade 10000000xxxxxxxx  Rack rack-1  Slot 1
 # boots from the NVMe
 d8:3a:dd:xx:xx:xx,blade-r1s01,10.0.0.101,infinite
@@ -312,13 +312,13 @@ d8:3a:dd:xx:xx:xx,blade-r1s01,10.0.0.101,infinite
 > **only** what would otherwise stand to the right of `dhcp-host=`. Write the
 > prefix along with it and dnsmasq reports `bad hex constant` **in its own log
 > only** and silently discards the line — the reservation has no effect and
-> nothing anywhere reports an error. That is why Rookery validates every line
+> nothing anywhere reports an error. That is why Sheath validates every line
 > before writing it: MAC format, DNS label, IPv4.
 
 > **Second quirk of `dhcp-hostsdir`:** dnsmasq only ever *adds* entries
 > dynamically. Rewriting one makes it complain `duplicate dhcp-host IP address`
 > until a `SIGHUP` clears the table. That is the reason for the sudoers line:
-> Rookery runs `systemctl reload dnsmasq` after every change. Skip the reload
+> Sheath runs `systemctl reload dnsmasq` after every change. Skip the reload
 > and the old netboot state stays in effect — which is the one thing that must
 > not be stale.
 
@@ -341,7 +341,7 @@ pxe-service=tag:bootnet,0,"Raspberry Pi Boot"   # known   -> only when requested
 ```
 
 dnsmasq sets `known` itself as soon as a MAC appears in a reservation.
-`bootnet` is set by Rookery, by writing the blade's reservation file as either
+`bootnet` is set by Sheath, by writing the blade's reservation file as either
 
 ```text
 d8:3a:dd:xx:xx:xx,set:bootnet,blade-r1s01,10.0.0.101,infinite   # install
@@ -354,7 +354,7 @@ requested. A reimage is one click plus a reboot, with no access to the rack.
 
 ### 3.7 The netboot payload
 
-TFTP root `/srv/rookery/tftp`, about 36 MB:
+TFTP root `/srv/sheath/tftp`, about 36 MB:
 
 ```text
 start4.elf, fixup4.dat          firmware (from the server's /boot/firmware)
@@ -391,8 +391,8 @@ after the thinning described below.
 #### The mini OS
 
 Raspberry Pi's own netinstall `boot.img` boots fine on a CM4, but it shows the
-menu-driven Imager on HDMI and never asks any API. Rookery ships its own image
-with `rookery-installer` instead.
+menu-driven Imager on HDMI and never asks any API. Sheath ships its own image
+with `sheath-installer` instead.
 
 Its layout makes that easy: `boot.img` is a bare **FAT16** (label `BOOT`, no
 partition table) holding `Image.gz`, `rootfs.cpio.zst`, `start4.elf`,
@@ -423,9 +423,9 @@ downloads over HTTPS.
 > instance) will not boot from the NVMe afterwards. Test that before adding it
 > to the catalogue.
 
-Keep the original around as `/srv/rookery/boot.img.rpi-netinstall.bak`.
+Keep the original around as `/srv/sheath/boot.img.rpi-netinstall.bak`.
 
-#### `rookery-installer`
+#### `sheath-installer`
 
 Go, static, ~6 MB, sources under `installer/`. Deliberately self-contained: the
 initramfs ships neither `curl` nor `zstd`, `xz` or `resize2fs`, so HTTP,
@@ -442,8 +442,8 @@ decompression (xz/zstd/gz), writing and mounting all happen inside the program.
    of a CM4 nor on any scratch space it has
 6. SHA-256 is computed along the compressed stream and verified
 7. `BLKRRPART` + `partprobe`, mount the largest partition as the root, drop the
-   seed `/etc/rookery/agent.env` (server, serial, token). If an agent binary
-   sits in `/srv/rookery/agent/`, it is installed at the same time and enabled
+   seed `/etc/sheath/agent.env` (server, serial, token). If an agent binary
+   sits in `/srv/sheath/agent/`, it is installed at the same time and enabled
    by a symlink in `multi-user.target.wants` — enabling a unit without a running
    systemd is exactly that symlink
 8. Report progress, reboot
@@ -460,7 +460,7 @@ without pulling the blade.
 `boot.img` → TFTP root — on the server itself, so the arm64 build is native:
 
 ```sh
-sudo -u rookery tools/build-bootimg.sh        # build and publish
+sudo -u sheath tools/build-bootimg.sh        # build and publish
 BUILD_ONLY=1 tools/build-bootimg.sh           # build, do not publish
 ```
 
@@ -469,18 +469,18 @@ failed build must never leave a stale `boot.img` in the TFTP root. That has
 happened once, and the blade then netbooted yesterday's installer while the log
 claimed today's.
 
-Sources are expected in `/srv/rookery/src-installer`, the unpacked ramdisk in
-`/srv/rookery/build/rootfs`. `ROOKERY_ROOT` and `INSTALLER_SRC` override both.
+Sources are expected in `/srv/sheath/src-installer`, the unpacked ramdisk in
+`/srv/sheath/build/rootfs`. `SHEATH_ROOT` and `INSTALLER_SRC` override both.
 
 ### 3.8 First start and the admin token
 
 On its first start the server creates the database and generates an admin token
-into `/srv/rookery/data/admin-token`, mode `0600`, owned by `rookery`. Reading it
+into `/srv/sheath/data/admin-token`, mode `0600`, owned by `sheath`. Reading it
 therefore needs `sudo` — a plain `cat` as an ordinary user only yields
 `Permission denied`:
 
 ```sh
-sudo cat /srv/rookery/data/admin-token
+sudo cat /srv/sheath/data/admin-token
 ```
 
 - Web interface: `http://10.0.0.10:8080/` — log in with that token
@@ -558,7 +558,7 @@ failed for somebody before.
 **The services are up.**
 
 ```sh
-systemctl status rookery dnsmasq
+systemctl status sheath dnsmasq
 curl -s http://10.0.0.10:8080/healthz
 ```
 
@@ -566,7 +566,7 @@ curl -s http://10.0.0.10:8080/healthz
 
 ```sh
 dnsmasq --test
-sudo grep -iE 'bad hex|duplicate dhcp-host' /srv/rookery/logs/dnsmasq.log
+sudo grep -iE 'bad hex|duplicate dhcp-host' /srv/sheath/logs/dnsmasq.log
 ```
 
 The grep must stay empty. It is the only place where a rejected reservation ever
@@ -576,7 +576,7 @@ shows up.
 
 ```sh
 tftp 10.0.0.10 -c get boot.img /tmp/boot.img
-cmp /tmp/boot.img /srv/rookery/tftp/boot.img
+cmp /tmp/boot.img /srv/sheath/tftp/boot.img
 ```
 
 **The netboot switch does what the interface claims.** `tools/pxeprobe.py` sends
@@ -598,7 +598,7 @@ sudo python3 tools/pxeprobe.py d8:3a:dd:xx:xx:xx eth0
 insert a blade into a slot, then:
 
 ```sh
-ls /etc/rookery/dhcp-hosts/
+ls /etc/sheath/dhcp-hosts/
 sudo journalctl -u dnsmasq -n 20
 ```
 
@@ -642,7 +642,7 @@ anything twice.
 
 ### Watching a blade boot
 
-Rookery follows the dnsmasq log and sees a blade starting **before any operating
+Sheath follows the dnsmasq log and sees a blade starting **before any operating
 system runs on it**. Two sources:
 
 1. **Passive, immediately** — the DHCP request, the vendor class, and every TFTP
@@ -660,14 +660,14 @@ state of the process, not an error.
 > **The distinction that saves the most time:** the RPi bootloader identifies
 > itself over DHCP with the vendor class
 > `PXEClient:Arch:00000:UNDI:002001`; an ordinary Linux client does not. That is
-> how Rookery knows whether a blade even *wanted* to netboot. A device that only
+> how Sheath knows whether a blade even *wanted* to netboot. A device that only
 > took an address is shown as such, with a note that `BOOT_ORDER` is probably
 > still at the factory value. Without that distinction you go hunting for a
 > fault in TFTP for a blade that never asked.
 
 ### Images
 
-Images live in `/srv/rookery/images/` and are served over HTTP. Two helpers:
+Images live in `/srv/sheath/images/` and are served over HTTP. Two helpers:
 
 ```sh
 tools/mirror-image.sh                                     # fetch into the catalogue
@@ -677,7 +677,7 @@ tools/prepare-image.sh debian-13-arm64 openssh-server     # prepare before first
 `prepare-image.sh` installs the packages that have to be present at first boot
 and clears the identity the image was built with. It matters because the Debian
 raspi image ships neither `openssh-server` nor cloud-init: a blade installed
-from it has exactly one door, the Rookery agent — and one door is one too few
+from it has exactly one door, the Sheath agent — and one door is one too few
 when the question is why the agent did not start. Doing it once per image also
 beats doing it once per blade. The host has to match the image's architecture;
 the work happens in a chroot without emulation.
@@ -685,7 +685,7 @@ the work happens in a chroot without emulation.
 ### The agent
 
 Runs as a systemd service on every blade, ~5.8 MB, ~1 MB of memory. Its
-credentials were placed by the installer in `/etc/rookery/agent.env`; the unit
+credentials were placed by the installer in `/etc/sheath/agent.env`; the unit
 pulls them in with `EnvironmentFile`.
 
 Every 60 seconds:
@@ -730,7 +730,7 @@ Two rules run through all of it:
   anyway.
 
 If applying partly fails, the agent does not remember the version, so the next
-run tries again. For diagnosis without a server, `rookery-agent -show` prints
+run tries again. For diagnosis without a server, `sheath-agent -show` prints
 facts and health as JSON.
 
 ### Interface language
@@ -751,16 +751,16 @@ immediately instead of quietly wrong.
 ### Redeploying after a code change
 
 ```sh
-rsync -az server/ rookery-server:~/rookery-src/
-ssh rookery-server '
-  export GOCACHE=/srv/rookery/go/cache GOMODCACHE=/srv/rookery/go/mod \
-         GOPATH=/srv/rookery/go/path TMPDIR=/srv/rookery/tmp GOFLAGS=-mod=mod
-  rsync -a ~/rookery-src/ /srv/rookery/src/
-  cd /srv/rookery/src && go build -trimpath -ldflags="-s -w" -o /tmp/rookery.new .
-  sudo systemctl stop rookery
-  sudo cp /tmp/rookery.new /srv/rookery/rookery
-  sudo chown rookery:rookery /srv/rookery/rookery
-  sudo systemctl start rookery'
+rsync -az server/ sheath-server:~/sheath-src/
+ssh sheath-server '
+  export GOCACHE=/srv/sheath/go/cache GOMODCACHE=/srv/sheath/go/mod \
+         GOPATH=/srv/sheath/go/path TMPDIR=/srv/sheath/tmp GOFLAGS=-mod=mod
+  rsync -a ~/sheath-src/ /srv/sheath/src/
+  cd /srv/sheath/src && go build -trimpath -ldflags="-s -w" -o /tmp/sheath.new .
+  sudo systemctl stop sheath
+  sudo cp /tmp/sheath.new /srv/sheath/sheathd
+  sudo chown sheath:sheath /srv/sheath/sheathd
+  sudo systemctl start sheath'
 ```
 
 Restarting invalidates all sessions — log in again with the admin token.
@@ -817,8 +817,8 @@ the file's first line. The agent therefore writes boot settings to
 **Cause.** The reservation line was rejected. A file in `dhcp-hostsdir` holds
 only the part right of `dhcp-host=`; with the prefix included, dnsmasq logs
 `bad hex constant` in its own log and drops the line silently.
-**Fix.** `sudo grep -i 'bad hex' /srv/rookery/logs/dnsmasq.log`, then correct the
-file. Rookery validates MAC, DNS label and IPv4 before writing, so a rejected
+**Fix.** `sudo grep -i 'bad hex' /srv/sheath/logs/dnsmasq.log`, then correct the
+file. Sheath validates MAC, DNS label and IPv4 before writing, so a rejected
 line usually means the file was edited by hand.
 
 ### An installation was requested, but the blade boots from its NVMe anyway
@@ -828,7 +828,7 @@ was rewritten without a reload (dnsmasq only *adds* host records dynamically), o
 the reload itself failed.
 **Fix.** `sudo python3 tools/pxeprobe.py <mac> eth0` shows what the bootloader
 would be offered. If the entry is missing, `sudo systemctl reload dnsmasq` and
-check `journalctl -u rookery` for `dnsmasq not reloaded` — that points at the
+check `journalctl -u sheath` for `dnsmasq not reloaded` — that points at the
 sudoers file (§3.4) or at `NoNewPrivileges` having crept into the unit.
 
 ### dnsmasq logs `duplicate dhcp-host IP address`
@@ -863,7 +863,7 @@ publishes only at the end. Never copy an image into `tftp/` by hand mid-build.
 
 **Cause.** Raspberry Pi's netinstall `boot.img` is still in the TFTP root. It
 boots, but it never asks the API.
-**Fix.** Publish the Rookery payload (§3.7).
+**Fix.** Publish the Sheath payload (§3.7).
 
 ### A blade boots something entirely wrong
 
@@ -894,14 +894,14 @@ expiry; open commands of the same kind are **replaced rather than stacked**
 only the newest of each kind, and sorts reboots to the end. Orphaned commands of
 deleted blades are cleared at server startup.
 
-### `cat /srv/rookery/data/admin-token` says `Permission denied`
+### `cat /srv/sheath/data/admin-token` says `Permission denied`
 
-**Cause.** The file is mode `0600` and owned by `rookery`. That is intended.
-**Fix.** `sudo cat /srv/rookery/data/admin-token`.
+**Cause.** The file is mode `0600` and owned by `sheath`. That is intended.
+**Fix.** `sudo cat /srv/sheath/data/admin-token`.
 
 ### The overview shows no boot activity at all
 
-**Cause.** Rookery is not seeing the dnsmasq log: `log-facility` missing or
+**Cause.** Sheath is not seeing the dnsmasq log: `log-facility` missing or
 pointing elsewhere, `log-dhcp` not set (then the vendor class never appears), the
 `-dnsmasq-log` flag disagreeing with the config, or logrotate renaming the file
 instead of truncating it — the watcher keeps its offset in a file nobody writes
@@ -921,7 +921,7 @@ modules at all.
 
 **Cause.** The Go build caches went to the home directory on the eMMC.
 **Fix.** Export `GOCACHE`, `GOMODCACHE`, `GOPATH` and `TMPDIR` under
-`/srv/rookery` (§3.2), in the build shell's profile as well as in scripts.
+`/srv/sheath` (§3.2), in the build shell's profile as well as in scripts.
 
 ### The server accepts connections and never answers
 

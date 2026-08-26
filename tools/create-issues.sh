@@ -49,7 +49,7 @@ Separate first, then distribute. An interface that comes into being before the s
 
 See docs/ARCHITECTURE-SITES.md §4.'
 
-create "Split rookery-site out as its own program" "sites,site" \
+create "Split sheath-site out as its own program" "sites,site" \
 'Split the network presence out of the server — run on the same machine to begin with.
 
 **Moves over (not rewritten)**

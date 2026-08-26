@@ -1,4 +1,4 @@
-module rookery-installer
+module sheath-installer
 
 go 1.24
 

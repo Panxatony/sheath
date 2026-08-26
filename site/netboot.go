@@ -16,7 +16,7 @@ import (
 // booting right now" appears at all. Reading it is how the site knows a blade
 // has asked for an address, has been offered a boot, and has pulled the
 // payload — none of which any blade reports itself, because at that point it
-// is a bootloader with no idea Rookery exists.
+// is a bootloader with no idea Sheath exists.
 var (
 	// "DHCPACK(eth0) 10.0.0.210 d8:3a:dd:11:22:33 name"
 	reDHCPAck = regexp.MustCompile(
@@ -24,7 +24,7 @@ var (
 	// "DHCPDISCOVER(eth0) d8:3a:dd:11:22:33" — no address yet
 	reDHCPDiscover = regexp.MustCompile(
 		`DHCP(?:DISCOVER|REQUEST)\([^)]*\)\s+([0-9a-fA-F:]{17})`)
-	// dnsmasq-tftp: "sent /srv/rookery/tftp/boot.img to 10.0.0.210"
+	// dnsmasq-tftp: "sent /srv/sheath/tftp/boot.img to 10.0.0.210"
 	reTFTPSent = regexp.MustCompile(`sent\s+(\S+)\s+to\s+(\d+\.\d+\.\d+\.\d+)`)
 	reTFTPFail = regexp.MustCompile(`failed sending\s+(\S+)\s+to\s+(\d+\.\d+\.\d+\.\d+)`)
 	// "<xid> vendor class: PXEClient:Arch:00000:UNDI:002001"

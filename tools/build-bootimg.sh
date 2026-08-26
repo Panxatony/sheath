@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Builds the netboot payload: installer → ramdisk → boot.img → TFTP root.
 #
-# Runs on the Rookery server itself (arm64, so the installer is built
-# natively). The sources are expected in /srv/rookery/src-installer, the
-# unpacked ramdisk in /srv/rookery/build/rootfs.
+# Runs on the Sheath server itself (arm64, so the installer is built
+# natively). The sources are expected in /srv/sheath/src-installer, the
+# unpacked ramdisk in /srv/sheath/build/rootfs.
 #
-#   sudo -u rookery tools/build-bootimg.sh          # build and install
+#   sudo -u sheath tools/build-bootimg.sh          # build and install
 #   BUILD_ONLY=1 tools/build-bootimg.sh             # build, do not publish
 #
 # Strict on purpose: a failed build must never leave a stale boot.img in the
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-ROOT=${ROOKERY_ROOT:-/srv/rookery}
+ROOT=${SHEATH_ROOT:-/srv/sheath}
 BUILD="$ROOT/build"
 SRC=${INSTALLER_SRC:-$ROOT/src-installer}
 ROOTFS="$BUILD/rootfs"
@@ -28,13 +28,13 @@ export TMPDIR=${TMPDIR:-$ROOT/tmp}
 step() { printf '\n── %s\n' "$1"; }
 
 step "Building the installer ($(cd "$SRC" && go version | cut -d' ' -f3))"
-rm -f "$BUILD/rookery-installer"
+rm -f "$BUILD/sheath-installer"
 ( cd "$SRC" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-    go build -trimpath -ldflags="-s -w" -o "$BUILD/rookery-installer" . )
-ls -l "$BUILD/rookery-installer"
+    go build -trimpath -ldflags="-s -w" -o "$BUILD/sheath-installer" . )
+ls -l "$BUILD/sheath-installer"
 
 step "Placing it in the ramdisk"
-install -m 0755 "$BUILD/rookery-installer" "$ROOTFS/usr/bin/rookery-installer"
+install -m 0755 "$BUILD/sheath-installer" "$ROOTFS/usr/bin/sheath-installer"
 if [ -f "$BUILD/init" ]; then
   install -m 0755 "$BUILD/init" "$ROOTFS/init"
 fi

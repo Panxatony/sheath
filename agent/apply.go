@@ -200,7 +200,7 @@ func setTimezone(want string) (bool, error) {
 	if _, err := os.Stat(zone); err != nil {
 		return false, fmt.Errorf("time zone %q not on this system: %w", want, err)
 	}
-	tmp := "/etc/localtime.rookery-new"
+	tmp := "/etc/localtime.sheath-new"
 	if err := os.Symlink(zone, tmp); err != nil {
 		return false, err
 	}
@@ -254,7 +254,7 @@ func keyTargets() []keyTarget {
 func writeAuthorizedKeys(t keyTarget, keys []string) (bool, error) {
 	dir := filepath.Join(t.home, ".ssh")
 	path := filepath.Join(dir, "authorized_keys")
-	want := "# managed by rookery-agent\n" + strings.Join(keys, "\n") + "\n"
+	want := "# managed by sheath-agent\n" + strings.Join(keys, "\n") + "\n"
 	if old, err := os.ReadFile(path); err == nil && string(old) == want {
 		return false, nil
 	}
@@ -326,7 +326,7 @@ func writeManagedFile(f managedFile) (bool, error) {
 
 // Some things a blade needs are single static binaries, not packages — the
 // compute-blade-agent that drives fan and LEDs is one. They are fetched from
-// the Rookery server rather than from the internet: the site has them
+// the Sheath server rather than from the internet: the site has them
 // anyway, and a blade in a rack without a route out must not be a blade that
 // cannot be configured.
 type binarySpec struct {
@@ -389,7 +389,7 @@ func installBinary(b binarySpec) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(b.Path), 0o755); err != nil {
 		return false, err
 	}
-	tmp := b.Path + ".rookery-new"
+	tmp := b.Path + ".sheath-new"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, b.Mode)
 	if err != nil {
 		return false, err
@@ -437,15 +437,15 @@ func fileSHA256(path string) (string, error) {
 // its own at the end of the file and leaves everything else untouched: the
 // distribution owns that file, we only add to it.
 const (
-	bootConfigStart = "# >>> rookery managed >>>"
-	bootConfigEnd   = "# <<< rookery managed <<<"
+	bootConfigStart = "# >>> sheath managed >>>"
+	bootConfigEnd   = "# <<< sheath managed <<<"
 )
 
 // The marker for "this needs a restart" lives in /run on purpose: that is a
 // tmpfs, so the restart clears it by happening. A variable in the process
 // would be lost when the agent restarts, and a file on disk would have to be
 // removed by someone.
-const rebootMarker = "/run/rookery-agent.reboot-required"
+const rebootMarker = "/run/sheath-agent.reboot-required"
 
 func markRebootPending() {
 	_ = os.WriteFile(rebootMarker, []byte("boot config changed\n"), 0o644)
@@ -552,7 +552,7 @@ func applyBlockTo(path string, lines []string, create bool) (bool, error) {
 	}
 	// Written next to the original and renamed over it: config.txt sits on the
 	// FAT boot partition, and a half-written one is an unbootable blade.
-	tmp := path + ".rookery-new"
+	tmp := path + ".sheath-new"
 	if err := os.WriteFile(tmp, []byte(updated), 0o644); err != nil {
 		return false, err
 	}

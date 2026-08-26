@@ -1,4 +1,4 @@
-# Rookery – Architecture proposal (v2)
+# Sheath – Architecture proposal (v2)
 
 Management software for 10 Compute Blades (Raspberry Pi CM4) in the BladeRunner rack.
 
@@ -122,7 +122,7 @@ script-execute initramfs)" that Raspberry Pi describes in its own provisioning d
 and the basis that `cmprovision` works on as well.
 
 **Recommendation:** adopt `scriptexecute` as the mini OS and only replace the script — instead of a
-fixed provisioning run it calls our `rookery-installer` (a small static Go binary that
+fixed provisioning run it calls our `sheath-installer` (a small static Go binary that
 speaks the same REST API as the agent). That removes the entire effort of a custom
 Buildroot or Alpine initramfs.
 
@@ -160,16 +160,16 @@ if you lock it into named places. There are exactly three.
 ```yaml
 images:
   ubuntu-24.04-arm64:
-    url:    http://rookery.lan/images/ubuntu-24.04-cm4.img.zst
+    url:    http://sheath.lan/images/ubuntu-24.04-cm4.img.zst
     sha256: 9f2c…
     boot_part: 1          # FAT
     root_part: 2
     seed:   generic
   debian-13-arm64:
-    url:    http://rookery.lan/images/debian-13-cm4.img.zst
+    url:    http://sheath.lan/images/debian-13-cm4.img.zst
     seed:   generic
   dietpi-arm64:
-    url:    http://rookery.lan/images/dietpi-cm4.img.zst
+    url:    http://sheath.lan/images/dietpi-cm4.img.zst
     seed:   generic
 ```
 
@@ -190,12 +190,12 @@ file copy operation that works identically on every systemd distribution. That i
 Concretely, these are four file operations in the mounted root partition:
 
 ```sh
-install -m755 rookery-agent  $ROOT/usr/local/bin/
-install -m644 rookery.service $ROOT/etc/systemd/system/
-install -m600 blade-token.env     $ROOT/etc/rookery/
+install -m755 sheath-agent  $ROOT/usr/local/bin/
+install -m644 sheathd.service $ROOT/etc/systemd/system/
+install -m600 blade-token.env     $ROOT/etc/sheath/
 # Enable a unit without a running systemd = symlink by hand:
-ln -s /etc/systemd/system/rookery.service \
-      $ROOT/etc/systemd/system/multi-user.target.wants/rookery.service
+ln -s /etc/systemd/system/sheathd.service \
+      $ROOT/etc/systemd/system/multi-user.target.wants/sheathd.service
 ```
 
 The last step is the only one that is not obvious: `systemctl enable` creates nothing
@@ -341,7 +341,7 @@ A management software that is supposed to manage addresses can do nothing with t
 
 ### The recommendation
 
-> **Rookery owns the address management** and generates DHCP reservations from it.
+> **Sheath owns the address management** and generates DHCP reservations from it.
 > `slot 3 → 10.10.0.13 → dhcp-host=<mac>,10.10.0.13,blade-03`
 
 The second, more important reason lies in the distribution topic:
@@ -379,7 +379,7 @@ remain a risk; a separate VLAN is cleaner.
 
 ### Changing reservations at runtime
 
-Rookery writes the reservations from the inventory. dnsmasq can read them in without a restart:
+Sheath writes the reservations from the inventory. dnsmasq can read them in without a restart:
 
 ```
 dhcp-hostsdir=/etc/dnsmasq.d/blades/     # one file per blade
@@ -387,7 +387,7 @@ dhcp-hostsdir=/etc/dnsmasq.d/blades/     # one file per blade
 
 dnsmasq reads new or changed files in this directory **by itself**, without a signal. One
 drawback: deleted or rewritten entries only disappear with a `SIGHUP`, because
-host records are only *added* dynamically. Rookery therefore additionally sends a
+host records are only *added* dynamically. Sheath therefore additionally sends a
 `systemctl reload dnsmasq` after every removal or rewrite. DNS records for `blade-03.blades.lan` fall
 out of the same instance as a by-product.
 
@@ -401,7 +401,7 @@ the MAC address and serial number."
 There are three better ways out:
 
 1. **Assign the MAC yourself.** The EEPROM property `MAC_ADDRESS` overrides the factory-programmed
-   address. During the one-time bring-up (see §6) Rookery can assign every slot a
+   address. During the one-time bring-up (see §6) Sheath can assign every slot a
    deterministic MAC — for instance `02:blade:00:00:00:03` for slot 3, from the
    locally administered range. That makes MAC, IP and slot known before the first boot, and the
    chicken-and-egg problem no longer exists. **That is the most elegant solution.**
@@ -439,7 +439,7 @@ MAC_ADDRESS=02:b1:ad:00:00:03   # deterministic from the slot — solves chicken
 TFTP_PREFIX=0               # directory = lower 4 bytes of the serial number
 ```
 
-That takes a few minutes per blade and is then never needed again. Rookery can generate the
+That takes a few minutes per blade and is then never needed again. Sheath can generate the
 EEPROM configuration from the inventory, so that the bring-up is one command
 (`bmctl eeprom-config --slot 3`) and not hand editing.
 
@@ -461,7 +461,7 @@ Unchanged from version 1, because it fits well with the rest:
 - **Hash comparison.** The server delivers the merged config with a hash; the agent reports the
   applied hash back. Drift detection falls out of that at no extra cost.
 - **Hardware stays with the `compute-blade-agent`** (Go, Apache-2.0): LEDs, fan, button,
-  critical mode on overtemperature, Prometheus on `:9666`, gRPC with mTLS. Rookery only writes
+  critical mode on overtemperature, Prometheus on `:9666`, gRPC with mTLS. Sheath only writes
   its `config.yaml` and calls its API for *identify*. Its installer already detects
   dpkg/dnf/pacman and therefore fits all three distributions without modification.
 
@@ -511,7 +511,7 @@ boot loop should not also be hard powered off every five minutes.
 
 ntfy, webhook or e-mail. For ten blades that is enough; Prometheus and Alertmanager are only worth it
 if they are in the house anyway. The `compute-blade-agent` already delivers the metrics in
-Prometheus format, Rookery provides the target list via HTTP-SD.
+Prometheus format, Sheath provides the target list via HTTP-SD.
 
 ---
 
@@ -594,7 +594,7 @@ GET     /api/v1/prometheus/targets     → HTTP Service Discovery
 - **MaaS / Tinkerbell.** Full-blown bare-metal provisioning including UEFI PXE, oversized for ten
   blades.
 - **Ansible.** No self-enrollment, no heartbeat, needs SSH and known addresses.
-  Can be added later; Rookery then supplies the dynamic inventory.
+  Can be added later; Sheath then supplies the dynamic inventory.
 - **Network configuration in the agent.** Made superfluous by the DHCP reservation — and that
   was the most distro-dependent part.
 
@@ -607,7 +607,7 @@ GET     /api/v1/prometheus/targets     → HTTP Service Discovery
 | **0** | Bring-up: once per blade via `rpiboot`, set `BOOT_ORDER=0xf26`, `NET_BOOT_MAX_RETRIES`, `MAC_ADDRESS`. Switch ports to portfast. | Prerequisite for everything else |
 | **1** | Server (inventory, image catalogue, config merge, REST), agent (enroll/pull/apply/status), `bmctl`. Image still written to the NVMe by hand. | Configuration runs over the network, three distributions in parallel |
 | **2** | dnsmasq from the inventory: DHCP reservations, fixed IPs, DNS. | Addresses are fixed and in one place |
-| **3** | Netboot chain: TFTP per serial number, `scriptexecute`, `rookery-installer`, image delivery. | Plugging it in is enough — distribution via dropdown |
+| **3** | Netboot chain: TFTP per serial number, `scriptexecute`, `sheath-installer`, image delivery. | Plugging it in is enough — distribution via dropdown |
 | **4** | Health model, rack UI, alerting, reimage via `kexec`, optional PoE power cycle. | Monitoring and remote maintenance |
 | **5** | Roles `k3s-server` / `k3s-worker` as group config. | Blades as Kubernetes nodes |
 
@@ -618,7 +618,7 @@ the same dnsmasq instance.
 
 ## 13. Open points
 
-**Answered** by the research and therefore no longer open: Rookery has to take over DHCP for the
+**Answered** by the research and therefore no longer open: Sheath has to take over DHCP for the
 blade VLAN (proxy DHCP cannot hand out addresses); on the CM4 the MAC *cannot* be derived
 from the serial number, but it can be assigned by hand via `MAC_ADDRESS`; there is no one-shot netboot
 on the CM4, `kexec` and `tryboot` take its place; the CM4 needs no
@@ -667,5 +667,5 @@ serial number in the same slot — address and role stay.
 ### Implementation status
 
 The server is built and running; see `INSTALLATION.md` for the concrete setup on
-`rookery-server` (dnsmasq with DHCP/DNS/TFTP, rack management, IPAM, reservation generator,
+`sheath-server` (dnsmasq with DHCP/DNS/TFTP, rack management, IPAM, reservation generator,
 netboot root).

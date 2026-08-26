@@ -1,4 +1,4 @@
-// rookery-agent runs on every blade and keeps it in step with the server.
+// sheath-agent runs on every blade and keeps it in step with the server.
 //
 // The agent pulls its desired state instead of having it pushed: it asks
 // every 60 seconds, applies changes idempotently and reports back what it
@@ -6,7 +6,7 @@
 // and converges by itself after every reboot.
 //
 // Its credentials were placed by the installer during provisioning:
-// /etc/rookery/agent.env
+// /etc/sheath/agent.env
 package main
 
 import (
@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	defaultEnvFile = "/etc/rookery/agent.env"
-	stateFile      = "/var/lib/rookery/applied"
-	userAgentBase  = "rookery-agent"
+	defaultEnvFile = "/etc/sheath/agent.env"
+	stateFile      = "/var/lib/sheath/applied"
+	userAgentBase  = "sheath-agent"
 )
 
 // Before the rename the project was called Blademaster. A blade written with
@@ -94,7 +94,7 @@ func main() {
 	}
 	a.applied = readState()
 
-	log.Printf("Rookery agent started — serial %s, server %s", cfg.Serial, cfg.Server)
+	log.Printf("Sheath agent started — serial %s, server %s", cfg.Serial, cfg.Server)
 	if a.applied != "" {
 		log.Printf("last applied configuration: %s", a.applied)
 	}
@@ -149,9 +149,9 @@ func loadConfig(path string) (Config, error) {
 	var c Config
 	// systemd passes the values through EnvironmentFile; when invoked by hand
 	// the agent reads the file itself. Both should work.
-	c.Server = firstEnv("ROOKERY_SERVER", legacyPrefix+"SERVER")
-	c.Serial = firstEnv("ROOKERY_SERIAL", legacyPrefix+"SERIAL")
-	c.Token = firstEnv("ROOKERY_TOKEN", legacyPrefix+"TOKEN")
+	c.Server = firstEnv("SHEATH_SERVER", legacyPrefix+"SERVER")
+	c.Serial = firstEnv("SHEATH_SERIAL", legacyPrefix+"SERIAL")
+	c.Token = firstEnv("SHEATH_TOKEN", legacyPrefix+"TOKEN")
 
 	for _, p := range append([]string{path}, legacyEnvFiles...) {
 		readEnvFile(p, &c)
@@ -197,7 +197,7 @@ func readEnvFile(path string, c *Config) {
 		v = strings.Trim(strings.TrimSpace(v), `"'`)
 		// Fold the old and new spellings onto the same name.
 		k = strings.TrimPrefix(k, legacyPrefix)
-		k = strings.TrimPrefix(k, "ROOKERY_")
+		k = strings.TrimPrefix(k, "SHEATH_")
 		switch k {
 		case "SERVER":
 			if c.Server == "" {
@@ -480,7 +480,7 @@ func readState() string {
 }
 
 func writeState(v string) {
-	if err := os.MkdirAll("/var/lib/rookery", 0o755); err != nil {
+	if err := os.MkdirAll("/var/lib/sheath", 0o755); err != nil {
 		return
 	}
 	if err := os.WriteFile(stateFile, []byte(v+"\n"), 0o644); err != nil {

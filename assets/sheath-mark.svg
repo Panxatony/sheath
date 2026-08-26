@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Sheath">
+  <title>Sheath</title>
+  <!--
+    A sheathed blade: grip and crossguard stand clear at the top, then the
+    throat of the scabbard, then the body tapering to a point. The three
+    cut-outs across the body are the slots — the same reading as a
+    BladeRunner seen from the front.
+
+    One path with fill-rule="evenodd", so the slots are real holes: the mark
+    sits on any background, takes the text colour, and needs no background of
+    its own.
+  -->
+  <path fill="currentColor" fill-rule="evenodd" d="
+    M11.2 1.4 H12.8 V4.3 H16.5 V5.9 H12.8 V7.4 H16.3 V9.5 H15.1
+    V18.4 L12 22.6 L8.9 18.4 V9.5 H7.7 V7.4 H11.2 V5.9 H7.5 V4.3
+    H11.2 Z
+    M10.1 11.2 H13.9 V12.7 H10.1 Z
+    M10.1 13.9 H13.9 V15.4 H10.1 Z
+    M10.1 16.6 H13.9 V18.1 H10.1 Z
+  "/>
+</svg>

@@ -118,7 +118,7 @@ var catalog = map[string]map[Lang]string{
 	"sub.network": {
 		LangEN: "Network %s.0/24 · dynamic pool .%d–.%d",
 		LangDE: "Netz %s.0/24 · dynamischer Pool .%d–.%d"},
-	"foot.api": {LangEN: "Rookery · API at /api/v1/", LangDE: "Rookery · API unter /api/v1/"},
+	"foot.api": {LangEN: "Sheath · API at /api/v1/", LangDE: "Sheath · API unter /api/v1/"},
 	"foot.tm": {
 		LangEN: "BladeRunner and Compute Blade are trademarks of Uptime Lab.",
 		LangDE: "BladeRunner und Compute Blade sind Marken von Uptime Lab."},

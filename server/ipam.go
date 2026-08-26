@@ -190,11 +190,11 @@ func (a *App) placeBlade(serial string, rackID *int64, slot *int) error {
 
 // ── dnsmasq reservations ─────────────────────────────────────────────
 //
-// Rookery writes one file per blade into dhcp_hosts_dir. dnsmasq picks up new
+// Sheath writes one file per blade into dhcp_hosts_dir. dnsmasq picks up new
 // and changed files by itself; deleted entries only disappear after SIGHUP.
 // So every sync also triggers a reload — cheap, and it covers both cases.
 
-// autoHostRe recognises names Rookery generated itself. autoMACPrefix is the
+// autoHostRe recognises names Sheath generated itself. autoMACPrefix is the
 // locally administered range we hand out — a vendor MAC reported by a blade
 // never starts like that.
 var autoHostRe = regexp.MustCompile(`^blade-r\d+s\d{2}$`)
@@ -222,7 +222,7 @@ func validReservation(mac, host, ip string) error {
 }
 
 func (a *App) dhcpHostsDir() string {
-	return a.setting("dhcp_hosts_dir", "/etc/rookery/dhcp-hosts")
+	return a.setting("dhcp_hosts_dir", "/etc/sheath/dhcp-hosts")
 }
 
 type syncResult struct {
@@ -237,12 +237,12 @@ type syncResult struct {
 }
 
 func (a *App) syncDHCP() (*syncResult, error) {
-	// Where a rookery-site owns the wire, the reservations are its business.
+	// Where a sheath-site owns the wire, the reservations are its business.
 	// Writing them from here as well would mean two programs owning one
 	// directory, and the loser would be whichever wrote last.
 	if !a.localDHCP {
 		return &syncResult{Written: []string{}, Removed: []string{},
-			Warning: "written by rookery-site, not here"}, nil
+			Warning: "written by sheath-site, not here"}, nil
 	}
 	dir := a.dhcpHostsDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -299,7 +299,7 @@ func (a *App) syncDHCP() (*syncResult, error) {
 		//
 		// The Raspberry Pi bootloader needs DHCP option 43 carrying
 		// "Raspberry Pi Boot" to netboot at all. dnsmasq offers it only to
-		// hosts whose tag matches a pxe-service line. If Rookery does not set
+		// hosts whose tag matches a pxe-service line. If Sheath does not set
 		// "bootnet", the netboot fails immediately and the bootloader falls
 		// through to the next device in BOOT_ORDER — the NVMe.
 		//
@@ -314,7 +314,7 @@ func (a *App) syncDHCP() (*syncResult, error) {
 			tag, why = "set:bootnet,", "erase requested – boots over the network"
 		}
 		body := fmt.Sprintf(
-			"# Rookery – generated, do not edit by hand\n"+
+			"# Sheath – generated, do not edit by hand\n"+
 				"# Blade %s  Rack %s  Slot %d\n"+
 				"# %s\n"+
 				"%s,%s%s,%s,infinite\n",
@@ -358,7 +358,7 @@ func (a *App) syncDHCP() (*syncResult, error) {
 }
 
 // reloadDnsmasq triggers the SIGHUP dnsmasq needs to forget removed or
-// changed reservations. When Rookery does not run as root it goes through a
+// changed reservations. When Sheath does not run as root it goes through a
 // narrowly scoped sudoers rule. If both fail that is not fatal — dnsmasq
 // picks up new entries by itself anyway.
 func reloadDnsmasq() error {

@@ -1,4 +1,4 @@
-# Rookery across multiple networks and sites
+# Sheath across multiple networks and sites
 
 Proposal, as of 25.08.2026. Describes a target state, not today's one —
 what exists today is documented in `INSTALLATION.md`.
@@ -7,7 +7,7 @@ what exists today is documented in `INSTALLATION.md`.
 
 ## 1. The cut that suggests itself
 
-Today Rookery combines two roles in a single process:
+Today Sheath combines two roles in a single process:
 
 | Role | What it does | Where it has to sit |
 |---|---|---|
@@ -19,7 +19,7 @@ router, TFTP does not want to see WAN latency, and pulling a 1.2 GB image over a
 site link is a bad idea once per blade.
 
 > **The proposal is therefore to split along exactly this seam:**
-> a **Rookery Server** at the central location, and one slim **Rookery Site** per site.
+> a **Sheath Server** at the central location, and one slim **Sheath Site** per site.
 
 This is not a rebuild of what exists but a decomposition: today's single machine
 becomes "site 1, whose central server happens to stand next to it".
@@ -30,7 +30,7 @@ becomes "site 1, whose central server happens to stand next to it".
 
 ```
                  ┌──────────────────────────────────────────┐
-                 │  Rookery Server (central)                │
+                 │  Sheath Server (central)                │
                  │  Inventory · Interface · Image catalogue │
                  │  Configuration · Audit trail             │
                  └───────────────┬──────────────────────────┘
@@ -38,7 +38,7 @@ becomes "site 1, whose central server happens to stand next to it".
         ┌────────────────────────┼────────────────────────┐
         │                        │                        │
 ┌───────┴────────┐      ┌────────┴───────┐       ┌────────┴───────┐
-│ Rookery Site   │      │ Rookery Site   │       │ Rookery Site   │
+│ Sheath Site   │      │ Sheath Site   │       │ Sheath Site   │
 │ Basement       │      │ Data centre    │       │ Hamburg office │
 │                │      │                │       │                │
 │ dnsmasq        │      │ dnsmasq        │       │ dnsmasq        │
@@ -132,7 +132,7 @@ Site:                          # new
   pool_from:   210             # dynamic range for unknown blades
   pool_to:     240
   rack_step:   20              # address block per BladeRunner
-  domain:      basement.rookery.lan
+  domain:      basement.sheath.lan
   token, last_seen, agent_version
   wan_state:   online | stale | offline
 
@@ -157,7 +157,7 @@ A blade address thus becomes `(site, BladeRunner, slot)`. Two sites may use the
 same network as long as they are separated; the combination is unique, the
 address on its own no longer is.
 
-**Names** gain the site: `r1s03.basement.rookery.lan`. Without that, `blade-r1s01`
+**Names** gain the site: `r1s03.basement.sheath.lan`. Without that, `blade-r1s01`
 from Basement and Hamburg collide as soon as you see both in the same list.
 
 ---
@@ -196,7 +196,7 @@ rebuild; it just gets a different address in its seed.
 | TFTP settings | `boot.img`, `cmdline.txt` with **its** server address |
 
 The last point matters: in future the `cmdline.txt` will contain
-`rookery_server=https://site.basement:8443` — the address of the site, not of the
+`sheath_server=https://site.basement:8443` — the address of the site, not of the
 central server. Otherwise the mini-OS would have to go out to the WAN.
 
 ---
@@ -234,7 +234,7 @@ as done.
 |---|---|
 | `server/` | site model, site endpoints, IPAM per site instead of global; the interface gains a site level above the BladeRunners |
 | `agent/` | **none** — it keeps talking to the address from its seed, which in future points to the site |
-| `installer/` | **none** — `rookery_server=` comes from the `cmdline.txt` that the site writes |
+| `installer/` | **none** — `sheath_server=` comes from the `cmdline.txt` that the site writes |
 | `site/` | **new** — dnsmasq generator, image cache, relaying, log observation |
 
 Much of this already exists: `syncDHCP`, the netboot detection from the dnsmasq

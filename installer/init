@@ -29,11 +29,11 @@ if grep -q blockingconsole /proc/cmdline; then
     /sbin/getty -L console 0 vt100
 fi
 
-# Rookery: instead of the menu-driven imager, our own installer runs
+# Sheath: instead of the menu-driven imager, our own installer runs
 # here. Everything before this (udev, dhcpcd) is unchanged — the
 # Raspberry Pi initramfs has already solved "boot on a CM4 and get a
 # network".
-/usr/bin/rookery-installer
+/usr/bin/sheath-installer
 
 # When the installer ends - normally or by crashing - PID 1 must not go
 # with it: that would be a kernel panic and an immediate reboot, and the

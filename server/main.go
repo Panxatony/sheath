@@ -34,17 +34,17 @@ var version = "dev"
 func main() {
 	var (
 		addr      = flag.String("addr", ":8080", "address the server listens on")
-		dbPath    = flag.String("db", "/srv/rookery/data/rookery.db", "path to the SQLite file")
-		imagesDir = flag.String("images", "/srv/rookery/images", "directory holding the OS images")
-		agentDir  = flag.String("agent", "/srv/rookery/agent", "directory holding the agent binary")
+		dbPath    = flag.String("db", "/srv/sheath/data/sheath.db", "path to the SQLite file")
+		imagesDir = flag.String("images", "/srv/sheath/images", "directory holding the OS images")
+		agentDir  = flag.String("agent", "/srv/sheath/agent", "directory holding the agent binary")
 		baseURL   = flag.String("base-url", "", "base URL reachable from the blades (default: http://<net_base>.10:8080)")
 		netBase   = flag.String("net-base", "", "base of the blade network, e.g. 10.0.0 (needed on first start only)")
 		localDHCP = flag.Bool("local-dhcp", true,
-			"write dnsmasq reservations and watch the log here; turn off where a rookery-site does it")
-		tftpDir = flag.String("tftp", "/srv/rookery/tftp",
+			"write dnsmasq reservations and watch the log here; turn off where a sheath-site does it")
+		tftpDir = flag.String("tftp", "/srv/sheath/tftp",
 			"TFTP root, served to sites over HTTP so they can offer the same payload")
-		dnsmasqLog = flag.String("dnsmasq-log", "/srv/rookery/logs/dnsmasq.log",
-			"dnsmasq log file; Rookery reads it to spot blades that are booting")
+		dnsmasqLog = flag.String("dnsmasq-log", "/srv/sheath/logs/dnsmasq.log",
+			"dnsmasq log file; Sheath reads it to spot blades that are booting")
 	)
 	flag.Parse()
 
@@ -208,15 +208,15 @@ func main() {
 
 	// Mark blades that have not checked in for a while as offline.
 	go app.reaper()
-	// Tail dnsmasq: that is how Rookery sees a blade netbooting, before any
-	// operating system runs on it. Where a rookery-site owns the wire it does
+	// Tail dnsmasq: that is how Sheath sees a blade netbooting, before any
+	// operating system runs on it. Where a sheath-site owns the wire it does
 	// the watching and reports what it saw, and doing it twice would mean two
 	// programs writing the same records.
 	app.localDHCP = *localDHCP
 	if app.localDHCP {
 		go app.watchDnsmasqLog(*dnsmasqLog)
 	} else {
-		log.Printf("local DHCP handling off — a rookery-site owns the wire here")
+		log.Printf("local DHCP handling off — a sheath-site owns the wire here")
 	}
 
 	srv := &http.Server{
@@ -224,7 +224,7 @@ func main() {
 		Handler:           logging(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("Rookery %s listening on %s (network %s.0/24, base URL %s)",
+	log.Printf("Sheath %s listening on %s (network %s.0/24, base URL %s)",
 		version, *addr, app.netBase(), app.baseURL)
 	if warns := app.checkNet(LangEN); len(warns) > 0 {
 		for _, w := range warns {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mirrors an image onto the Rookery server and enters it in the catalogue.
+# Mirrors an image onto the Sheath server and enters it in the catalogue.
 # After that the installation runs over HTTP inside our own network instead of
 # over the internet link — once per site rather than once per blade, and
 # without depending on a remote server that may be slow or offline.
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-ROOT=${ROOKERY_ROOT:-/srv/rookery}
+ROOT=${SHEATH_ROOT:-/srv/sheath}
 DIR="$ROOT/images"
 ID=${1:?usage: mirror-image.sh <id> <url> [os-id]}
 URL=${2:?usage: mirror-image.sh <id> <url> [os-id]}

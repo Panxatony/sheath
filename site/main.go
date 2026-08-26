@@ -1,4 +1,4 @@
-// rookery-site is the network presence of one site.
+// sheath-site is the network presence of one site.
 //
 // It holds no decisions. Which image a blade gets, whether it may netboot,
 // what its address is — all of that is decided centrally and arrives here as
@@ -10,7 +10,7 @@
 // to the centre is down. A blade that reboots in a power cut must get its
 // address and boot locally, without asking anyone far away.
 //
-//	rookery-site -server https://rookery.example -site 2 -token-file /etc/rookery-site/token
+//	sheath-site -server https://sheath.example -site 2 -token-file /etc/sheath-site/token
 package main
 
 import (
@@ -25,7 +25,7 @@ import (
 )
 
 // version is stamped at build time (-X main.version=v1.2.3).
-var version = "rookery-site/dev"
+var version = "sheath-site/dev"
 
 type config struct {
 	Server    string
@@ -42,14 +42,14 @@ type config struct {
 
 func main() {
 	var (
-		server    = flag.String("server", "", "central Rookery server, e.g. https://rookery.example")
+		server    = flag.String("server", "", "central Sheath server, e.g. https://sheath.example")
 		siteID    = flag.Int64("site", 0, "id of this site")
-		tokenFile = flag.String("token-file", "/etc/rookery-site/token", "file holding the site token")
-		hostsDir  = flag.String("dhcp-hosts", "/etc/rookery/dhcp-hosts", "dnsmasq dhcp-hostsdir")
-		logFile   = flag.String("dnsmasq-log", "/srv/rookery/logs/dnsmasq.log", "dnsmasq log to watch")
-		imagesDir = flag.String("images", "/srv/rookery/images", "where images are cached")
-		tftpDir   = flag.String("tftp", "/srv/rookery/tftp", "TFTP root")
-		stateDir  = flag.String("state", "/var/lib/rookery-site", "where the last desired state is kept")
+		tokenFile = flag.String("token-file", "/etc/sheath-site/token", "file holding the site token")
+		hostsDir  = flag.String("dhcp-hosts", "/etc/sheath/dhcp-hosts", "dnsmasq dhcp-hostsdir")
+		logFile   = flag.String("dnsmasq-log", "/srv/sheath/logs/dnsmasq.log", "dnsmasq log to watch")
+		imagesDir = flag.String("images", "/srv/sheath/images", "where images are cached")
+		tftpDir   = flag.String("tftp", "/srv/sheath/tftp", "TFTP root")
+		stateDir  = flag.String("state", "/var/lib/sheath-site", "where the last desired state is kept")
 		interval  = flag.Duration("interval", 30*time.Second, "interval between two passes")
 		listen    = flag.String("listen", ":8081",
 			"address for the blade relay; empty turns the relay off")

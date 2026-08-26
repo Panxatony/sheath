@@ -1,8 +1,8 @@
 # Compiled binaries
-/server/rookery
-/agent/rookery-agent
-/installer/rookery-installer
-/site/rookery-site
+/server/sheath
+/agent/sheath-agent
+/installer/sheath-installer
+/site/sheath-site
 *.test
 
 # Local only: work in progress and previews

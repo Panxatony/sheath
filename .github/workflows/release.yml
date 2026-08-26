@@ -1,6 +1,6 @@
-# Builds every Rookery binary and attaches it to a release.
+# Builds every Sheath binary and attaches it to a release.
 #
-# Rookery is four programs in four modules, all static and dependency-free,
+# Sheath is four programs in four modules, all static and dependency-free,
 # so a release is exactly that: the binaries, their checksums, and the unit
 # files somebody needs to put them somewhere.
 #
@@ -49,14 +49,14 @@ jobs:
             ( cd "$1" && GOOS=linux GOARCH="$2" go build -trimpath \
                 -ldflags "-s -w -X main.version=$ref" -o "../dist/$3" . )
           }
-          build server    arm64 rookery-linux-arm64
-          build server    amd64 rookery-linux-amd64
-          build site      arm64 rookery-site-linux-arm64
-          build site      amd64 rookery-site-linux-amd64
-          build agent     arm64 rookery-agent-linux-arm64
-          build installer arm64 rookery-installer-linux-arm64
-          cp site/rookery-site.service dist/
-          cp installer/init dist/rookery-installer-init
+          build server    arm64 sheathd-linux-arm64
+          build server    amd64 sheathd-linux-amd64
+          build site      arm64 sheath-site-linux-arm64
+          build site      amd64 sheath-site-linux-amd64
+          build agent     arm64 sheath-agent-linux-arm64
+          build installer arm64 sheath-installer-linux-arm64
+          cp site/sheath-site.service dist/
+          cp installer/init dist/sheath-installer-init
           ( cd dist && sha256sum * > SHA256SUMS )
           ls -l dist
 
@@ -71,9 +71,9 @@ jobs:
 
             | file | where it runs |
             |---|---|
-            | `rookery-linux-*` | the central server |
-            | `rookery-site-linux-*` | one per site: DHCP reservations, netboot detection, image cache, relay |
-            | `rookery-agent-linux-arm64` | every blade |
-            | `rookery-installer-linux-arm64` | inside the netboot payload, not installed by hand |
+            | `sheathd-linux-*` | the central server |
+            | `sheath-site-linux-*` | one per site: DHCP reservations, netboot detection, image cache, relay |
+            | `sheath-agent-linux-arm64` | every blade |
+            | `sheath-installer-linux-arm64` | inside the netboot payload, not installed by hand |
 
             Verify with `sha256sum -c SHA256SUMS`.

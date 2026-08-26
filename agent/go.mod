@@ -1,3 +1,3 @@
-module rookery-agent
+module sheath-agent
 
 go 1.24

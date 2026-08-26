@@ -1,9 +1,27 @@
 # Changelog
 
-Notable changes to Rookery. Newest first. Dates are the day the change landed
+Notable changes to Sheath. Newest first. Dates are the day the change landed
 on `main`.
 
 ## Unreleased
+
+### Changed
+- **Renamed from Rookery to Sheath.** A sheath is what a blade lives in when
+  it is not in use: it holds the blade, keeps its edge, gives it a place. The
+  old name was a pun on the chess rook, and the mark drew one; both are gone.
+  The new mark is a sheathed blade — grip and crossguard above, the scabbard
+  below, three cut-outs across it that read as slots.
+- The server binary is `sheathd`, so the plain name stays free for a
+  command-line client later. The other three keep their shape: `sheath-site`,
+  `sheath-agent`, `sheath-installer`.
+- Paths, units, environment variables and the dnsmasq drop-in follow:
+  `/srv/sheath`, `/etc/sheath`, `/etc/sheath-site`, `/var/lib/sheath-site`,
+  `sheathd.service`, `sheath-site.service`, `sheath-agent.service`,
+  `SHEATH_SERVER` and friends. No compatibility shims: the blades were wiped
+  for this, so nothing in the field carries the old names.
+- A wipe can end in a restart instead of a halt (`install.after: reboot`).
+  A blade that stays where it is has no reason to wait for hands — it comes
+  back up in the installer and can be given a new image from the interface.
 
 ### Added
 - Erasing a blade's NVMe from the interface, so it can be pulled and put in
@@ -142,7 +160,7 @@ on `main`.
   which suits a single field and turns five into a line of thumbnails.
 
 ### Added
-- `rookery-site`, the network presence of one site, as its own program. It
+- `sheath-site`, the network presence of one site, as its own program. It
   holds no decisions — which image a blade gets and whether it may netboot is
   decided centrally — but it owns the wire: the DHCP reservations, the netboot
   switch per blade, the image cache, and the boot payload in the TFTP root.
@@ -226,7 +244,7 @@ on `main`.
   leaves a setting that already stands elsewhere alone, and reports
   `reboot_required` until the blade has restarted. The interface shows that as
   "restart pending".
-- The agent installs plain binaries from the Rookery server (`binaries` in the
+- The agent installs plain binaries from the Sheath server (`binaries` in the
   desired state), checked against a sha256 and only when the file on disk is
   not already the wanted one. That is how compute-blade-agent now reaches a
   blade: binary, config and unit come from the desired state, so fan and LED
@@ -315,6 +333,6 @@ on `main`.
   so a blade that moves gets the name of its new place.
 
 ### Changed
-- The project was renamed from Blademaster to Rookery, and "Rack" to
+- The project was renamed from Blademaster to Sheath, and "Rack" to
   "BladeRunner" (2, 4, 10 and 20 nodes). BladeRunner and Compute Blade are
   trademarks of Uptime Lab.
