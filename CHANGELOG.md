@@ -6,6 +6,22 @@ on `main`.
 ## Unreleased
 
 ### Added
+- An `agent` section in the desired state, layered global → group → blade like
+  everything else: `interval` and `jitter` (so a rack does not ask in lockstep
+  after a power cut), `allow` (which commands this blade accepts at all — for
+  the machine that must never be reimaged by accident), and
+  `reboot_on_boot_config` with an optional `maintenance` window. A setting the
+  firmware reads is worth nothing until the firmware reads it; where this is
+  on, the blade restarts itself, reports that it is about to, and otherwise
+  waits for an hour somebody chose. Off by default — restarting a machine that
+  is doing work is a decision, not a tidying step.
+
+### Fixed
+- The installer could not find `sfdisk`: the mini OS starts it with a bare
+  environment and the tool lives in `/usr/sbin`. A blade kept an ungrown
+  partition over it, and the message read as if the tool were missing.
+
+### Added
 - How an installation is carried out is now the server's business, not the
   installer's: target device, whether to grow the last partition, what to do
   when the write is finished (reboot, halt, or drop to the console), how long

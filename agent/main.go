@@ -50,6 +50,10 @@ type agent struct {
 	http    *http.Client
 	applied string   // last applied config version
 	pending []string // changes from the last apply, waiting to be reported
+	pol     agentPolicy
+	// restartAnnounced keeps the "waiting for the window" line to once per
+	// wait rather than once per minute.
+	restartAnnounced bool
 }
 
 func main() {
@@ -100,14 +104,22 @@ func main() {
 
 	// A random offset stops twenty blades from hammering the server in
 	// lockstep after a power cut.
-	jitter := time.Duration(rand.Int63n(int64(*interval / 4)))
-	time.Sleep(jitter)
+	time.Sleep(time.Duration(rand.Int63n(int64(*interval / 4))))
 
 	for {
 		if err := a.tick(); err != nil {
 			log.Printf("pass failed: %v", err)
 		}
-		time.Sleep(*interval)
+		// The interval is a flag until the server says otherwise; from then
+		// on it is a property of the blade like everything else.
+		wait := *interval
+		if a.pol.Interval > 0 {
+			wait = a.pol.Interval
+		}
+		if a.pol.Jitter > 0 {
+			wait += time.Duration(rand.Int63n(int64(a.pol.Jitter)))
+		}
+		time.Sleep(wait)
 	}
 }
 
@@ -290,11 +302,17 @@ func (a *agent) syncConfig() error {
 		return err
 	}
 	if code == http.StatusNotModified {
+		// Even unchanged, the restart decision has to be reconsidered: a
+		// blade may be waiting for a maintenance window that has since begun.
+		a.maybeRestart()
 		return nil
 	}
 	if cr.Version == a.applied {
+		a.maybeRestart()
 		return nil
 	}
+	// The agent's own rules travel with everything else it is told.
+	a.pol = readAgentPolicy(cr.Config)
 
 	log.Printf("new configuration %s — applying", cr.Version)
 	changes, err := applyConfig(cr.Config)
@@ -318,7 +336,35 @@ func (a *agent) syncConfig() error {
 	}
 	a.applied = cr.Version
 	writeState(cr.Version)
+	a.maybeRestart()
 	return nil
+}
+
+// maybeRestart carries out what "reboot_on_boot_config" asks for: a change
+// only the firmware reads is worth nothing until the firmware reads it. Off
+// by default, because restarting a machine that is doing work is a decision
+// and not a tidying step — and where it is on, a maintenance window keeps it
+// to an hour somebody chose.
+func (a *agent) maybeRestart() {
+	if !a.pol.RebootOnCfg || !rebootRequired() {
+		return
+	}
+	if !a.pol.inWindow(time.Now()) {
+		if !a.restartAnnounced {
+			log.Printf("restart pending, waiting for the window %s", a.pol.Window)
+			a.pending = append(a.pending,
+				"restart pending — waiting for the maintenance window "+a.pol.Window)
+			a.restartAnnounced = true
+		}
+		return
+	}
+	log.Printf("boot configuration changed and this blade may restart itself — rebooting in 30 s")
+	a.pending = append(a.pending, "restarting for a boot configuration change")
+	// Reported before it goes: the report leaves in the same pass, and a
+	// blade that vanishes without a word looks like a fault.
+	_ = a.report()
+	go delayedReboot(30 * time.Second)
+	a.pol.RebootOnCfg = false // do not queue a second one while waiting
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -375,6 +421,12 @@ func (a *agent) runCommands() error {
 	for _, kind := range order {
 		c := newest[kind]
 		log.Printf("command %d: %s", c.ID, c.Kind)
+		if !a.pol.allows(c.Kind) {
+			log.Printf("  %s not allowed on this blade — skipped", c.Kind)
+			a.pending = append(a.pending,
+				fmt.Sprintf("command %s refused: not allowed on this blade", c.Kind))
+			continue
+		}
 		switch c.Kind {
 		case "identify":
 			if err := identify(true); err != nil {

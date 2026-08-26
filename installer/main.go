@@ -688,7 +688,18 @@ func growLastPartition(target string) (int64, error) {
 
 	num := strings.TrimPrefix(lastName, base)
 	num = strings.TrimPrefix(num, "p")
-	cmd := exec.Command("sfdisk", "--no-reread", "--force", "-N", num, target)
+	// Absolute path: the mini OS starts the installer as PID 1's child with a
+	// bare environment, and sfdisk lives in /usr/sbin, which is not in the
+	// PATH that comes with that. It cost a blade an ungrown partition to
+	// notice, because the failure looked like "sfdisk is missing" and the
+	// tool was there all along.
+	sfdisk := "/usr/sbin/sfdisk"
+	if _, err := os.Stat(sfdisk); err != nil {
+		if found, lerr := exec.LookPath("sfdisk"); lerr == nil {
+			sfdisk = found
+		}
+	}
+	cmd := exec.Command(sfdisk, "--no-reread", "--force", "-N", num, target)
 	cmd.Stdin = strings.NewReader(", +\n")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return 0, fmt.Errorf("%v: %s", err, strings.TrimSpace(tail(string(out), 200)))
