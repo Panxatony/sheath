@@ -962,9 +962,19 @@ func (a *App) getSite(id int64) (*Site, error) {
 
 // localSite is the site whose network presence this process serves itself.
 // Until sheath-site is split out there is exactly one.
+// localSite is the site this server physically stands in, and nothing else.
+// It used to fall back to the first site, which meant that after the centre
+// moved to a machine in another network the interface still labelled a site
+// it had left as "here" — the fallback answered a question nobody had asked.
 func (a *App) localSite() (*Site, error) {
-	st, err := scanSite(a.db.QueryRow(`SELECT ` + siteCols + ` FROM sites WHERE local=1 ORDER BY id LIMIT 1`))
-	if err == nil {
+	return scanSite(a.db.QueryRow(`SELECT ` + siteCols + ` FROM sites WHERE local=1 ORDER BY id LIMIT 1`))
+}
+
+// defaultSite is the different question: which site does something belong to
+// when nobody said. The site here, if there is one, and otherwise the first —
+// a BladeRunner created without a choice has to land somewhere.
+func (a *App) defaultSite() (*Site, error) {
+	if st, err := a.localSite(); err == nil {
 		return st, nil
 	}
 	return scanSite(a.db.QueryRow(`SELECT ` + siteCols + ` FROM sites ORDER BY id LIMIT 1`))

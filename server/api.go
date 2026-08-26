@@ -496,7 +496,7 @@ func (a *App) hRacksCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	siteID := in.SiteID
 	if siteID == 0 {
-		st, err := a.localSite()
+		st, err := a.defaultSite()
 		if err != nil {
 			fail(w, 500, "no site configured: %v", err)
 			return

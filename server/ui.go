@@ -349,12 +349,12 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 
 	msg, errMsg := flash(r)
 	poolFrom, poolTo := 210, 240
-	if st, err := a.localSite(); err == nil {
+	if st, err := a.defaultSite(); err == nil {
 		poolFrom, poolTo = st.PoolFrom, st.PoolTo
 	}
 	var nextOff int
 	var offErr error
-	if st, err := a.localSite(); err == nil {
+	if st, err := a.defaultSite(); err == nil {
 		nextOff, offErr = a.nextRackOffset(st.ID)
 	} else {
 		offErr = err
@@ -692,7 +692,7 @@ func (a *App) hUIRackCreate(w http.ResponseWriter, r *http.Request) {
 	// A site may be chosen; without one the local site is meant.
 	siteID, _ := strconv.ParseInt(r.FormValue("site"), 10, 64)
 	if siteID == 0 {
-		st, err := a.localSite()
+		st, err := a.defaultSite()
 		if err != nil {
 			redirectMsg(w, r, "/", "err", "no site present")
 			return

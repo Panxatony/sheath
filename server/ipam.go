@@ -36,7 +36,7 @@ import (
 // blades are told to reach. Anything that speaks about a particular
 // BladeRunner must use that BladeRunner's site instead.
 func (a *App) netBase() string {
-	if st, err := a.localSite(); err == nil {
+	if st, err := a.defaultSite(); err == nil {
 		return st.NetBase
 	}
 	return a.setting("net_base", "10.0.0")
