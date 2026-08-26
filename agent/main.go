@@ -28,7 +28,7 @@ import (
 const (
 	defaultEnvFile = "/etc/rookery/agent.env"
 	stateFile      = "/var/lib/rookery/applied"
-	userAgent      = "rookery-agent/1"
+	userAgentBase  = "rookery-agent"
 )
 
 // Before the rename the project was called Blademaster. A blade written with
@@ -55,6 +55,10 @@ type agent struct {
 	// wait rather than once per minute.
 	restartAnnounced bool
 }
+
+// version is stamped at build time (-X main.version=v1.2.3). "dev" is what a
+// binary built by hand says, and saying so is the point.
+var version = "dev"
 
 func main() {
 	var (
@@ -234,7 +238,7 @@ func (a *agent) do(method, path string, body any, out any, extra map[string]stri
 		return 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+a.cfg.Token)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", userAgentBase+"/"+version)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

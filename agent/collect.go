@@ -48,7 +48,7 @@ func collectFacts() map[string]any {
 		"arch":          runtimeArch(),
 		"model":         strings.TrimRight(readFileStr("/proc/device-tree/model"), "\x00"),
 		"serial":        readSerial(),
-		"agent_version": userAgent,
+		"agent_version": userAgentBase + "/" + version,
 		// Set once the agent has changed something that only the firmware
 		// reads — the blade is configured, but not yet running that
 		// configuration.

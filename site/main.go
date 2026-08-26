@@ -24,7 +24,8 @@ import (
 	"time"
 )
 
-const version = "rookery-site/1"
+// version is stamped at build time (-X main.version=v1.2.3).
+var version = "rookery-site/dev"
 
 type config struct {
 	Server    string

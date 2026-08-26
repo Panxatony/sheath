@@ -1,0 +1,79 @@
+# Builds every Rookery binary and attaches it to a release.
+#
+# Rookery is four programs in four modules, all static and dependency-free,
+# so a release is exactly that: the binaries, their checksums, and the unit
+# files somebody needs to put them somewhere.
+#
+# arm64 is the real target — the server runs on a CM4 and the blades are CM4s.
+# amd64 is built for the server as well, because the central server is the one
+# part that may sensibly live on ordinary hardware.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            installer/go.sum
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ref="${{ github.event.inputs.tag || github.ref_name }}"
+          # -trimpath so the binaries do not carry a build machine's paths;
+          # -s -w because nothing here is debugged with a symbol table.
+          flags="-trimpath -ldflags=-s -ldflags=-w"
+          build() { # component, GOARCH, output name
+            ( cd "$1" && GOOS=linux GOARCH="$2" go build -trimpath \
+                -ldflags "-s -w -X main.version=$ref" -o "../dist/$3" . )
+          }
+          build server    arm64 rookery-linux-arm64
+          build server    amd64 rookery-linux-amd64
+          build site      arm64 rookery-site-linux-arm64
+          build site      amd64 rookery-site-linux-amd64
+          build agent     arm64 rookery-agent-linux-arm64
+          build installer arm64 rookery-installer-linux-arm64
+          cp site/rookery-site.service dist/
+          cp installer/init dist/rookery-installer-init
+          ( cd dist && sha256sum * > SHA256SUMS )
+          ls -l dist
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            Static Linux binaries, no runtime dependencies.
+
+            | file | where it runs |
+            |---|---|
+            | `rookery-linux-*` | the central server |
+            | `rookery-site-linux-*` | one per site: DHCP reservations, netboot detection, image cache, relay |
+            | `rookery-agent-linux-arm64` | every blade |
+            | `rookery-installer-linux-arm64` | inside the netboot payload, not installed by hand |
+
+            Verify with `sha256sum -c SHA256SUMS`.

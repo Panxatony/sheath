@@ -92,6 +92,9 @@ type installOpts struct {
 	RebootDelay int `json:"reboot_delay"`
 }
 
+// version is stamped at build time (-X main.version=v1.2.3).
+var version = "dev"
+
 func main() {
 	// The CM4 has little memory, and the whole root filesystem lives in RAM.
 	// An explicit ceiling makes the collector work sooner instead of growing
@@ -316,7 +319,10 @@ func installedLooking(dev string) bool {
 func banner() {
 	logf("")
 	logf("  ┌────────────────────────────────────┐")
-	logf("  │  Rookery Installer             │")
+	// The box is drawn with 36 characters between the corners, so the line
+	// has to be padded to exactly that or the frame goes crooked on a console
+	// nobody can resize.
+	logf("  │%-36s│", "  Rookery Installer "+version)
 	logf("  └────────────────────────────────────┘")
 	logf("")
 }

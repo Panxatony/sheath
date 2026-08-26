@@ -27,6 +27,10 @@ type App struct {
 	nameCache  map[int64]string
 }
 
+// version is stamped at build time (-X main.version=v1.2.3). A binary built
+// by hand says "dev", which is worth knowing when two of them disagree.
+var version = "dev"
+
 func main() {
 	var (
 		addr      = flag.String("addr", ":8080", "address the server listens on")
@@ -220,7 +224,8 @@ func main() {
 		Handler:           logging(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("Rookery listening on %s (network %s.0/24, base URL %s)", *addr, app.netBase(), app.baseURL)
+	log.Printf("Rookery %s listening on %s (network %s.0/24, base URL %s)",
+		version, *addr, app.netBase(), app.baseURL)
 	if warns := app.checkNet(LangEN); len(warns) > 0 {
 		for _, w := range warns {
 			log.Printf("WARNING: %s", w)

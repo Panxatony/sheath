@@ -183,11 +183,33 @@ func setTimezone(want string) (bool, error) {
 	if strings.HasSuffix(cur, "/"+want) {
 		return false, nil
 	}
-	if _, err := exec.LookPath("timedatectl"); err != nil {
-		return false, errNoTool
+	// timedatectl talks to systemd over the system bus. DietPi ships without
+	// dbus, so the same fallback as for the hostname: do it by hand, which is
+	// all timedatectl does anyway — point /etc/localtime at the zone and
+	// write the name down for the tools that read it there.
+	if _, err := exec.LookPath("timedatectl"); err == nil {
+		out, err := exec.Command("timedatectl", "set-timezone", want).CombinedOutput()
+		if err == nil {
+			return true, nil
+		}
+		if !strings.Contains(string(out), "bus") {
+			return false, fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+		}
 	}
-	if out, err := exec.Command("timedatectl", "set-timezone", want).CombinedOutput(); err != nil {
-		return false, fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+	zone := filepath.Join("/usr/share/zoneinfo", want)
+	if _, err := os.Stat(zone); err != nil {
+		return false, fmt.Errorf("time zone %q not on this system: %w", want, err)
+	}
+	tmp := "/etc/localtime.rookery-new"
+	if err := os.Symlink(zone, tmp); err != nil {
+		return false, err
+	}
+	if err := os.Rename(tmp, "/etc/localtime"); err != nil {
+		os.Remove(tmp)
+		return false, err
+	}
+	if err := os.WriteFile("/etc/timezone", []byte(want+"\n"), 0o644); err != nil {
+		return false, err
 	}
 	return true, nil
 }
