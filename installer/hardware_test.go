@@ -41,3 +41,33 @@ func TestDecodeRevision(t *testing.T) {
 		t.Error("nonsense was decoded")
 	}
 }
+
+// The stock configuration carries a comment that describes an order it does
+// not set — this is the file as vcgencmd prints it on a Compute Blade.
+func TestParseBootOrder(t *testing.T) {
+	const stock = `[all]
+BOOT_UART=0
+WAKE_ON_GPIO=1
+POWER_OFF_ON_HALT=0
+
+# Boot Order Codes, from https://www.raspberrypi.com/documentation/
+# Try SD first (1), followed by, USB PCIe, NVMe PCIe, USB SoC XHCI then network
+BOOT_ORDER=0xf25416
+
+ENABLE_SELF_UPDATE=1
+`
+	for _, c := range []struct{ in, want string }{
+		{stock, "0xf25416"},
+		{"BOOT_ORDER=0xf162\n", "0xf162"},
+		{"BOOT_ORDER=f162\n", "0xf162"},
+		{"BOOT_ORDER=0xF162   # netboot first\n", "0xf162"},
+		{"#BOOT_ORDER=0xf41\n", ""},
+		{"BOOT_ORDER=\n", ""},
+		{"BOOT_ORDER=nonsense\n", ""},
+		{"[all]\nBOOT_UART=1\n", ""},
+	} {
+		if got := parseBootOrder(c.in); got != c.want {
+			t.Errorf("parseBootOrder(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

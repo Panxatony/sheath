@@ -371,6 +371,22 @@ var catalog = map[string]map[Lang]string{
 	"inv.via.usb-bcm": {LangEN: "came up from USB", LangDE: "kam von USB hoch"},
 	"inv.via.rpiboot": {LangEN: "came up over rpiboot", LangDE: "kam über rpiboot hoch"},
 	"inv.via.http":    {LangEN: "came up over HTTP", LangDE: "kam über HTTP hoch"},
+	"bo.title":        {LangEN: "Boot order", LangDE: "Bootreihenfolge"},
+	"bo.card":         {LangEN: "SD/eMMC", LangDE: "SD/eMMC"},
+	"bo.network":      {LangEN: "network", LangDE: "Netz"},
+	"bo.nvme":         {LangEN: "NVMe", LangDE: "NVMe"},
+	"bo.usb":          {LangEN: "USB", LangDE: "USB"},
+	"bo.rpiboot":      {LangEN: "rpiboot", LangDE: "rpiboot"},
+	"bo.http":         {LangEN: "HTTP", LangDE: "HTTP"},
+	"bo.stop":         {LangEN: "stop", LangDE: "Halt"},
+	"bo.restart":      {LangEN: "start over", LangDE: "von vorn"},
+	"bo.other":        {LangEN: "code %s", LangDE: "Code %s"},
+	"bo.unreachable": {
+		LangEN: "the bootloader never tries the %s",
+		LangDE: "der Bootloader versucht die %s nie"},
+	"bo.hint": {
+		LangEN: "The boot order lives in the module's EEPROM and is read out through the firmware — vcgencmd on the installed system, and the mini OS on every netboot, so a blade that has never been installed still has one on file. A blade whose order does not name the device its image goes on will write the image and then boot nowhere.",
+		LangDE: "Die Bootreihenfolge steht im EEPROM des Moduls und wird über die Firmware ausgelesen — mit vcgencmd auf dem installierten System und beim Netboot im Mini-OS, sodass auch ein nie installiertes Blade eine hinterlegt hat. Ein Blade, dessen Reihenfolge das Gerät seines Images nicht nennt, schreibt das Image und bootet danach nirgendwohin."},
 	"inv.fwhint": {
 		LangEN: "The bootloader version and the day it was built come from the device tree, where the firmware writes them; so does how this blade came up, which is worth a second look when a blade you meant to reinstall says it came from its NVMe. The VideoCore line needs vcgencmd, which Debian does not ship.",
 		LangDE: "Bootloader-Version und Baudatum stehen im Device Tree, wo die Firmware sie hinterlegt — ebenso, wie dieses Blade hochgekommen ist, was einen zweiten Blick wert ist, wenn ein Blade, das neu installiert werden sollte, von seiner NVMe kam. Die VideoCore-Zeile braucht vcgencmd, das Debian nicht mitliefert."},

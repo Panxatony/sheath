@@ -21,6 +21,10 @@
 # Together 57 MB, which is 57 MB not transferred over TFTP to every blade
 # that netboots.
 #
+# Added, because the installer has to read the boot order out of the EEPROM
+# and nothing in a busybox rootfs can: vcgencmd, 68 KB, from the same archive
+# the firmware comes from and pinned the same way.
+#
 # The artefact is pinned by checksum. Upstream publishes it at one URL and
 # replaces it in place, so a new build changes the payload every blade boots
 # — that has to be a decision somebody makes, not something that happens.
@@ -32,9 +36,18 @@ URL=${NET_INSTALL_URL:-https://downloads.raspberrypi.org/net_install/boot.img}
 WANT=${NET_INSTALL_SHA256:-9f26719cc254d701ccc1ae654649e31db3f033f13984dc48bc3c0d9dfc12fe77}
 SRC=${INSTALLER_SRC:-$(cd "$(dirname "$0")/../installer" 2>/dev/null && pwd || echo /srv/sheath/src-installer)}
 
+# vcgencmd, which the network installer does not carry. It is the only way to
+# read the module's boot order: that lives in the EEPROM, and the EEPROM is
+# reachable only through the firmware. Worth 68 KB, because the mini OS is the
+# one thing that sees a blade before it has an operating system — and a blade
+# whose boot order does not name the device its image goes on is exactly the
+# blade that will never have one.
+UTILS_URL=${RASPI_UTILS_URL:-https://archive.raspberrypi.com/debian/pool/main/r/raspi-utils/raspi-utils-core_20260601-1_arm64.deb}
+UTILS_SHA=${RASPI_UTILS_SHA256:-19f6b18809c308cd228feb4ae87049a097297d8cdc73666208e7fc7bf8bf18bf}
+
 say() { printf '\n── %s\n' "$1"; }
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
-for t in curl mcopy zstd cpio sha256sum; do need "$t"; done
+for t in curl mcopy zstd cpio sha256sum ar tar; do need "$t"; done
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/minios.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
@@ -95,6 +108,24 @@ say "Putting the installer in the imager's place"
 install -m 0755 "$WORK/sheath-installer" "$ROOTFS/usr/bin/sheath-installer"
 install -m 0755 "$SRC/init" "$ROOTFS/init"
 echo "  $(stat -c%s "$ROOTFS/usr/bin/sheath-installer") bytes, and an init that runs it"
+
+say "Adding vcgencmd"
+DEB="$DEST/raspi-utils-core.deb"
+if [ -f "$DEB" ] && [ "$(sha256sum "$DEB" | cut -d' ' -f1)" = "$UTILS_SHA" ]; then
+  echo "  already here and matching"
+else
+  curl -fL --retry 3 -o "$DEB.part" "$UTILS_URL"
+  GOT=$(sha256sum "$DEB.part" | cut -d' ' -f1)
+  if [ "$GOT" != "$UTILS_SHA" ]; then
+    rm -f "$DEB.part"
+    echo "raspi-utils-core is not the pinned build: expected $UTILS_SHA, got $GOT" >&2
+    exit 1
+  fi
+  mv "$DEB.part" "$DEB"
+fi
+ar p "$DEB" data.tar.gz | tar -xz -C "$WORK" ./usr/bin/vcgencmd
+install -m 0755 "$WORK/usr/bin/vcgencmd" "$ROOTFS/usr/bin/vcgencmd"
+echo "  $(stat -c%s "$ROOTFS/usr/bin/vcgencmd") bytes — it needs only libc, which is in there"
 
 printf '%s\n' "$WANT" > "$DEST/.net-install-sha256"
 say "Done — now build the payload"

@@ -28,34 +28,37 @@ type invRow struct {
 	IP       string
 	MAC      string
 
-	Board   string // "Compute Module 4 Rev 1.1"
-	RAM     string
-	RAMMB   int
-	SoC     string
-	Maker   string
-	Cores   string
-	MHz     string
-	Rev     string // the raw revision code, because it is the one true name
-	EMMC    string
-	NVMe    string
-	Model   string // what the device tree calls it, when the code says nothing
-	Radio   string
-	Boot    string // bootloader, its build date, and how the blade came up
-	VC      string // the VideoCore firmware, where the system can say
-	BootVia string
-	OS      string
-	Kernel  string
-	Agent   string
-	Seen    string
-	LED     string
-	Unused  bool  // in no BladeRunner, so it can be removed from here
-	SiteID  int64 // for a blade with no slot: the site that last saw it
-	SawSite string
-	Status  string // what the slot rows say: in sync, drift, writing, offline …
-	SLED    string
-	LiveIP  string // the address it actually holds, as the wire saw it
-	Drifted bool   // the address it holds is not the one it was given
-	Missing bool   // nothing hardware-wise has ever been reported
+	Board     string // "Compute Module 4 Rev 1.1"
+	RAM       string
+	RAMMB     int
+	SoC       string
+	Maker     string
+	Cores     string
+	MHz       string
+	Rev       string // the raw revision code, because it is the one true name
+	EMMC      string
+	NVMe      string
+	Model     string // what the device tree calls it, when the code says nothing
+	Radio     string
+	Boot      string // bootloader, its build date, and how the blade came up
+	VC        string // the VideoCore firmware, where the system can say
+	BootVia   string
+	Order     string // BOOT_ORDER as the EEPROM holds it, "0xf162"
+	OrderText string // the same, read out loud
+	OrderWarn string // set when that order cannot reach the install target
+	OS        string
+	Kernel    string
+	Agent     string
+	Seen      string
+	LED       string
+	Unused    bool  // in no BladeRunner, so it can be removed from here
+	SiteID    int64 // for a blade with no slot: the site that last saw it
+	SawSite   string
+	Status    string // what the slot rows say: in sync, drift, writing, offline …
+	SLED      string
+	LiveIP    string // the address it actually holds, as the wire saw it
+	Drifted   bool   // the address it holds is not the one it was given
+	Missing   bool   // nothing hardware-wise has ever been reported
 }
 
 // invSummary is the line above the table: what the fleet adds up to.
@@ -191,6 +194,24 @@ func (a *App) inventory(l Lang) ([]invRow, invSummary, error) {
 				}
 			}
 			r.BootVia = T(l, "inv.via."+m)
+		}
+		if bo := str(f, "boot_order"); bo != "" {
+			r.Order, r.OrderText = bo, bootOrderText(l, bo)
+			// The reason to keep the number at all. A blade is pointed at one
+			// device, and if the bootloader never tries that device the image
+			// lands and nothing starts — which looks from here like a blade
+			// that died during the installation.
+			target := a.installTarget(b)
+			for _, d := range a.installDevices(b) {
+				if d.Path != target || bootOrderReaches(bo, d.Kind) {
+					continue
+				}
+				word := d.Label
+				if i := strings.Index(word, " · "); i > 0 {
+					word = word[:i]
+				}
+				r.OrderWarn = T(l, "bo.unreachable", word)
+			}
 		}
 		if r.Board == "" && r.RAM == "" {
 			r.Missing = true

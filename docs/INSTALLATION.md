@@ -888,6 +888,14 @@ ramdisk, removes the imager along with Qt, the QML plugins, the graphics
 drivers, maps, icons and fonts (57 MB a headless blade has no use for), and
 puts `installer/init` and the freshly built installer in.
 
+One thing goes the other way: `vcgencmd` from `raspi-utils-core`, pinned by
+checksum like everything else here. The network installer does not carry it,
+and it is the only way to read a module's `BOOT_ORDER` — that number lives in
+the EEPROM, which is reachable only through the firmware. 68 KB is worth it,
+because the mini OS is the one thing that sees a blade **before** it has an
+operating system, and a blade whose boot order does not name the device its
+image goes on is exactly the blade that will never get one.
+
 Then build the payload with `build-bootimg.sh` and, before trusting it, boot a
 blade on it.
 

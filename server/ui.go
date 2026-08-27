@@ -3693,7 +3693,10 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
           {{if .EMMC}}<div class="sub2">{{.EMMC}}</div>{{end}}</td>
         <td>{{if .Boot}}<span class="mono">{{.Boot}}</span>{{end}}
           <div class="mono sub2">{{if .VC}}VC {{.VC}}{{end}}</div>
-          {{if .BootVia}}<div class="hint">{{.BootVia}}</div>{{end}}</td>
+          {{if .BootVia}}<div class="hint">{{.BootVia}}</div>{{end}}
+          {{if .Order}}<div class="mono sub2">{{t $.L "bo.title"}} {{.Order}}</div>
+            <div class="hint">{{.OrderText}}</div>{{end}}
+          {{if .OrderWarn}}<div><span class="chip crit">{{.OrderWarn}}</span></div>{{end}}</td>
         <td>{{.OS}}
           <div class="mono sub2">{{.Kernel}}</div></td>
         <td class="right">
@@ -3710,6 +3713,7 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
   </div>
   {{else}}<div class="body"><p class="hint">{{t .L "inv.empty"}}</p></div>{{end}}
   <div class="body"><p class="hint" style="margin:0">{{t .L "inv.fwhint"}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "bo.hint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "inv.forgethint"}}</p></div>
 </div>
 

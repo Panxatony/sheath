@@ -123,6 +123,9 @@ func firmware() map[string]any {
 	if v := vcgencmdVersion(); v != "" {
 		out["vc_firmware"] = v
 	}
+	if v := bootOrder(); v != "" {
+		out["boot_order"] = v
+	}
 	return out
 }
 
@@ -147,6 +150,68 @@ func bootModeName(m uint32) string {
 		return "http"
 	}
 	return fmt.Sprintf("mode %d", m)
+}
+
+// bootOrder reads the order the bootloader tries devices in. It decides
+// whether a blade starts at all: an image written to the eMMC of a module
+// whose order names only the network and an NVMe boots from nowhere, and the
+// blade then says nothing — no console to ask, and not one packet on the wire
+// to notice it by.
+//
+// It lives in the EEPROM, which Linux cannot read on its own; both programs
+// that can are wrappers around the same firmware mailbox, and neither is
+// installed everywhere. So this is best effort, and an empty answer means
+// "nobody could ask", never "there is no order".
+func bootOrder() string {
+	for _, argv := range [][]string{
+		{"vcgencmd", "bootloader_config"},
+		{"rpi-eeprom-config"},
+	} {
+		path, err := exec.LookPath(argv[0])
+		if err != nil {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		out, err := exec.CommandContext(ctx, path, argv[1:]...).Output()
+		cancel()
+		if err != nil {
+			continue
+		}
+		if v := parseBootOrder(string(out)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// parseBootOrder picks BOOT_ORDER out of an EEPROM configuration. The stock
+// configuration carries a comment describing an order it does not set, so a
+// commented line is not a setting; the first one that is wins, which is the
+// [all] section on every module that has only one.
+func parseBootOrder(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(k) != "BOOT_ORDER" {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		if i := strings.IndexAny(v, " \t#"); i >= 0 {
+			v = strings.TrimSpace(v[:i])
+		}
+		v = strings.ToLower(strings.TrimPrefix(strings.ToLower(v), "0x"))
+		if v == "" {
+			return ""
+		}
+		if _, err := strconv.ParseUint(v, 16, 64); err != nil {
+			return ""
+		}
+		return "0x" + v
+	}
+	return ""
 }
 
 // vcgencmdVersion asks the VideoCore for its firmware date. It is the one

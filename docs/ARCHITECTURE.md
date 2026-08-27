@@ -79,6 +79,7 @@ without a netboot installer, multi-distro would be ten times the manual work; wi
 | PoE indicator | `GPIO23` | Part of the health model |
 | EEPROM `BOOT_ORDER` | nibbles read from right to left | `0xf162` = network → NVMe → SD/eMMC → loop. **CM4 factory: `0xf641`** |
 | Install target | NVMe, eMMC or a card | Chosen per blade from the devices it reported; the default is the NVMe where there is one and the single device where there is only one |
+| Boot order in the inventory | read out through the firmware | The mini OS reads it on every netboot, the agent wherever `vcgencmd` is installed; a blade whose order does not name its install target is flagged |
 
 **Important:** the digits are read from the right, so `0xf26` means: try the NVMe first, fall through to netboot if the NVMe is
 empty, otherwise start over. A fresh NVMe therefore ends up at the installer **by itself** —

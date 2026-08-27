@@ -1535,6 +1535,11 @@ var hardwareKeys = []string{
 	"board", "board_rev", "board_revision", "soc", "maker", "ram_mb",
 	"cpu_cores", "cpu_mhz", "emmc_bytes", "emmc_model", "nvme_bytes",
 	"nvme_model", "wireless", "eth_mac", "bootloader",
+	// The boot order is read through vcgencmd, and Debian does not ship it —
+	// so the mini OS is often the only thing that ever sees it. Losing it on
+	// the first report from the installed system would mean the fact exists
+	// exactly until the blade starts working.
+	"boot_order",
 }
 
 func (a *App) factsOf(serial string) string {
