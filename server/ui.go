@@ -1448,6 +1448,11 @@ var tmplFuncs = template.FuncMap{
 	"th": func(l Lang, key string, args ...any) template.HTML {
 		return template.HTML(T(l, key, args...))
 	},
+	// The release this server is running. It belongs in the footer of every
+	// page: the first question about any reported behaviour is which version
+	// reported it, and the network the centre sits on — which is what stood
+	// there — is on the sites page and needed no repeating.
+	"ver":       func() string { return version },
 	"otherLang": otherLang,
 	"langName":  langName,
 	"hsize":     human,
@@ -2029,7 +2034,7 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
 {{end}}
 
 <footer><span>{{t .L "foot.api"}}<br><span class="tm">{{t .L "foot.tm"}}</span></span>
-<span>{{.NetBase}}.0/24</span></footer>
+<span class="mono">{{ver}}</span></footer>
 </div></body></html>`))
 
 var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTML + `
@@ -2268,7 +2273,8 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
-<span>{{t .L "nav.rack"}} {{.R.Rack.ID}}</span></footer>
+<span>{{t .L "nav.rack"}} {{.R.Rack.ID}}</span>
+<span class="mono">{{ver}}</span></footer>
 </div></body></html>`))
 
 var loginTmpl = template.Must(template.New("login").Funcs(tmplFuncs).Parse(headHTML + `
@@ -2521,7 +2527,8 @@ var topoTmpl = template.Must(template.New("map").Funcs(tmplFuncs).Parse(headHTML
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
-<span>{{t .L "foot.api"}}</span></footer>
+<span>{{t .L "foot.api"}}</span>
+<span class="mono">{{ver}}</span></footer>
 </div></body></html>`))
 
 // hUISitePolicy saves the numbers a site judges by. An empty field means
@@ -2968,7 +2975,8 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
-<span>{{t .L "site.one"}} {{.S.ID}}</span></footer>
+<span>{{t .L "site.one"}} {{.S.ID}}</span>
+<span class="mono">{{ver}}</span></footer>
 </div></body></html>`))
 
 // ── Settings ─────────────────────────────────────────────────────────
@@ -3334,7 +3342,8 @@ var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
-<span>{{t .L "foot.api"}}</span></footer>
+<span>{{t .L "foot.api"}}</span>
+<span class="mono">{{ver}}</span></footer>
 </div></body></html>`))
 
 // ── Images ───────────────────────────────────────────────────────────
@@ -3523,7 +3532,8 @@ var imagesTmpl = template.Must(template.New("images").Funcs(tmplFuncs).Parse(hea
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
-<span>{{t .L "foot.api"}}</span></footer>
+<span>{{t .L "foot.api"}}</span>
+<span class="mono">{{ver}}</span></footer>
 </div></body></html>`))
 
 // hUIBackupNow is the button beside the backup card. A backup nobody can
@@ -3720,7 +3730,8 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
-<span>{{t .L "foot.api"}}</span></footer>
+<span>{{t .L "foot.api"}}</span>
+<span class="mono">{{ver}}</span></footer>
 </div></body></html>`))
 
 // hUISiteEnroll makes a code and shows it once. Once, because a code that is
