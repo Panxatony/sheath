@@ -325,6 +325,9 @@ var catalog = map[string]map[Lang]string{
 	"err.busyinstall": {
 		LangEN: "an installation is under way on this blade",
 		LangDE: "Auf diesem Blade läuft gerade eine Installation"},
+	"ov.sitesaw": {LangEN: "saw it on the wire", LangDE: "hat es im Netz gesehen"},
+	"inv.place":  {LangEN: "Put in slot", LangDE: "Einsetzen"},
+	"inv.placed": {LangEN: "%s is in %s slot %02d, at %s", LangDE: "%s steckt in %s Slot %02d, unter %s"},
 	"inv.forget": {LangEN: "Forget", LangDE: "Entfernen"},
 	"inv.unused": {LangEN: "in no BladeRunner", LangDE: "in keinem BladeRunner"},
 	"inv.forgot": {LangEN: "%s removed from the inventory", LangDE: "%s aus dem Inventar entfernt"},

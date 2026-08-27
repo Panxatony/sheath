@@ -6,6 +6,13 @@ on `main`.
 ## Unreleased
 
 ### Added
+- A blade with no slot can be put into one from the **Inventory**, which is
+  where such a blade is visible in the first place. One list of free slots
+  named the way somebody at the rack would say it — site, enclosure, slot —
+  rather than two menus where the second depends on the first.
+- The list of blades without a slot says which site last saw one on the wire.
+  A blade in no BladeRunner has no site of its own, but a site watched it come
+  up and wrote that down; without it the list says "somewhere".
 - A blade standing in no BladeRunner can be removed from the **Inventory**
   page, which is the page that lists blades regardless of where they stand and
   therefore the only one where such a blade is visible at all. It takes its

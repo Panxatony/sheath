@@ -477,3 +477,20 @@ func (a *App) netbootStage(serial, stage, note string) {
 	_, _ = a.db.Exec(`UPDATE netboot SET last_seen=?,note=? WHERE mac=?`, now(), note, mac)
 	a.raiseStage(mac, stage)
 }
+
+// siteLastSaw answers the question a blade without a slot raises: which
+// building is it standing in? It has no BladeRunner, so it has no site of its
+// own — but a site watched it come up on the wire, and that site wrote it
+// down. Without this the list of unplaced blades says "somewhere".
+func (a *App) siteLastSaw(serial string) (int64, string) {
+	var id int64
+	if err := a.db.QueryRow(`SELECT site_id FROM netboot WHERE serial=? AND site_id<>0
+		ORDER BY last_seen DESC LIMIT 1`, serial).Scan(&id); err != nil || id == 0 {
+		return 0, ""
+	}
+	st, err := a.getSite(id)
+	if err != nil {
+		return id, ""
+	}
+	return id, st.Name
+}

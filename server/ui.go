@@ -17,6 +17,8 @@ import (
 // ── Views ────────────────────────────────────────────────────────────
 
 type slotView struct {
+	SiteID   int64 // for a blade with no slot: the site that last saw it
+	SiteName string
 	Devices  []installDevice // what this blade says it has to install onto
 	Target   string          // the one it would be installed to
 	Slot     int
@@ -313,9 +315,11 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 	var unassigned []slotView
 	for _, b := range blades {
 		if b.RackID == nil || b.Slot == nil {
+			sid, sname := a.siteLastSaw(b.Serial)
 			unassigned = append(unassigned, slotView{
 				Serial: b.Serial, Hostname: b.Hostname, MAC: b.MAC,
 				State: b.State, LED: ledFor(b.State), Ago: ago(l, b.LastSeen),
+				SiteID: sid, SiteName: sname,
 			})
 		}
 	}
@@ -1731,9 +1735,17 @@ const headHTML = `<!doctype html><html lang="{{.L}}"><head><meta charset="utf-8"
   addEventListener("pagehide", stop);
   addEventListener("beforeunload", stop);
   addEventListener("click", function (e) {
-    if (e.target.closest("a[href], button, input[type=submit]")) { stop(); }
+    if (e.target.closest("a[href], button, input[type=submit], summary, label")) { stop(); }
   }, true);
   addEventListener("submit", stop, true);
+  // Typing is work in progress. Without this the page reloads five seconds
+  // into filling in a form and takes what was typed with it — which is what
+  // it did to somebody adding a BladeRunner.
+  addEventListener("focusin", function (e) {
+    if (e.target.closest("input, select, textarea")) { stop(); }
+  }, true);
+  addEventListener("input", stop, true);
+  addEventListener("keydown", stop, true);
 })();
 </script>{{end}}
 <style>` + baseCSS + `</style></head><body>`
@@ -1964,10 +1976,14 @@ var overviewTmpl = template.Must(template.New("ov").Funcs(tmplFuncs).Parse(headH
   <span class="tag">{{t .L "ov.unassignedtag" (len .Unassigned)}}</span></div>
   <table>
     <thead><tr><th></th><th>{{t .L "th.serial"}}</th><th>{{t .L "th.mac"}}</th>
+      <th>{{t .L "site.one"}}</th>
       <th>{{t .L "th.status"}}</th><th>{{t .L "th.lastseen"}}</th></tr></thead>
     <tbody>{{range .Unassigned}}
       <tr><td><span class="led {{.LED}}"></span></td>
-      <td class="mono">{{.Serial}}</td><td class="mono">{{if .MAC}}{{.MAC}}{{else}}—{{end}}</td>
+      <td class="mono">{{.Serial}}{{if .Hostname}}<div class="sub2">{{.Hostname}}</div>{{end}}</td>
+      <td class="mono">{{if .MAC}}{{.MAC}}{{else}}—{{end}}</td>
+      <td>{{if .SiteName}}<a href="/sites/{{.SiteID}}">{{.SiteName}}</a>
+          <div class="mono sub2">{{t $.L "ov.sitesaw"}}</div>{{else}}<span class="hint">—</span>{{end}}</td>
       <td><span class="chip {{.LED}}">{{.State}}</span></td>
       <td class="mono">{{.Ago}}</td></tr>
     {{end}}</tbody>
@@ -3566,7 +3582,7 @@ func (a *App) hInventory(w http.ResponseWriter, r *http.Request) {
 	msg, errMsg := flash(r)
 	render(w, inventoryTmpl, map[string]any{
 		"L": l, "Path": "/inventory", "LocalSite": a.localSiteID(),
-		"Rows": rows, "Sum": sum, "Unknown": unknown,
+		"Rows": rows, "Sum": sum, "Unknown": unknown, "Free": a.freeSlots(),
 		"Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
 	})
 }
@@ -3630,6 +3646,14 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
         <td>{{.OS}}
           <div class="mono sub2">{{.Kernel}}{{if .Seen}} · {{.Seen}}{{end}}</div></td>
         <td class="right">
+          {{if and .Unused $.Free}}
+          <form method="post" action="/inventory/{{.Serial}}/place" style="display:flex;gap:.4rem;margin:0 0 .4rem">
+            <select name="slot" aria-label="{{t $.L "inv.place"}}">
+              {{range $.Free}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+            </select>
+            <button class="ghost">{{t $.L "inv.place"}}</button>
+          </form>
+          {{end}}
           {{if .Unused}}
           <form method="post" action="/inventory/{{.Serial}}/forget"
                 onsubmit="return confirm('{{printf (t $.L "inv.forgetask") (or .Hostname .Serial)}}')">
@@ -3747,4 +3771,39 @@ func (a *App) hUIBladeForget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectMsg(w, r, "/inventory", "msg", fmt.Sprintf(T(l, "inv.forgot"), name))
+}
+
+// hUIBladePlace puts a blade from the inventory into a free slot. The slot is
+// one value — "<rack>:<slot>" — because a blade goes into a slot, and asking
+// for the enclosure and the position separately makes the reader do the
+// joining that the list already did.
+func (a *App) hUIBladePlace(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	serial := r.PathValue("serial")
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, "/inventory", "err", T(l, "err.form"))
+		return
+	}
+	rackStr, slotStr, ok := strings.Cut(r.FormValue("slot"), ":")
+	rackID, err1 := strconv.ParseInt(rackStr, 10, 64)
+	slot, err2 := strconv.Atoi(slotStr)
+	if !ok || err1 != nil || err2 != nil {
+		redirectMsg(w, r, "/inventory", "err", T(l, "err.form"))
+		return
+	}
+	if err := a.placeBlade(serial, &rackID, &slot); err != nil {
+		redirectMsg(w, r, "/inventory", "err", errText(l, err))
+		return
+	}
+	if _, err := a.syncDHCP(); err != nil {
+		redirectMsg(w, r, "/inventory", "err", T(l, "err.dhcpinsert", errText(l, err)))
+		return
+	}
+	b, err := a.getBlade(serial)
+	if err != nil {
+		redirectMsg(w, r, "/inventory", "msg", T(l, "msg.saved"))
+		return
+	}
+	redirectMsg(w, r, "/inventory", "msg",
+		fmt.Sprintf(T(l, "inv.placed"), b.Hostname, b.RackName, slot, b.IP))
 }

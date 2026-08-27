@@ -231,3 +231,48 @@ func (a *App) hInventoryAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"blades": rows, "summary": sum})
 }
+
+// freeSlot is one place a blade could be put, named the way somebody at the
+// rack would say it: which building, which enclosure, which slot.
+type freeSlot struct {
+	Value string // "<rack id>:<slot>"
+	Label string
+}
+
+// freeSlots lists every empty slot in the fleet. The inventory is where an
+// unplaced blade is visible, so it is where putting it somewhere belongs —
+// and a blade is put into a slot, not into a BladeRunner, so one list of
+// slots beats two dependent menus.
+func (a *App) freeSlots() []freeSlot {
+	racks, err := a.listRacks()
+	if err != nil {
+		return nil
+	}
+	blades, err := a.listBlades()
+	if err != nil {
+		return nil
+	}
+	taken := map[string]bool{}
+	for _, b := range blades {
+		if b.RackID != nil && b.Slot != nil {
+			taken[fmt.Sprintf("%d:%d", *b.RackID, *b.Slot)] = true
+		}
+	}
+	var out []freeSlot
+	for _, rk := range racks {
+		site := a.siteName(rk.SiteID)
+		for s := 1; s <= rk.Size; s++ {
+			key := fmt.Sprintf("%d:%d", rk.ID, s)
+			if taken[key] {
+				continue
+			}
+			label := fmt.Sprintf("%s · %s · %02d", site, rk.Name, s)
+			if site == "" {
+				label = fmt.Sprintf("%s · %02d", rk.Name, s)
+			}
+			out = append(out, freeSlot{Value: key, Label: label})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	return out
+}
