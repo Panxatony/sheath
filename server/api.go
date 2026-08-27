@@ -395,12 +395,14 @@ func (a *App) hSiteStatus(w http.ResponseWriter, r *http.Request) {
 		// The checksum of the netboot payload this site serves. A site older
 		// than this field says nothing, and nothing is what is then shown.
 		Payload string `json:"payload"`
+		// Where the blades of this site should report. Only the site knows.
+		RelayURL string `json:"relay_url"`
 		// What the site holds on its own disk, which is not the same thing as
 		// what the catalogue says exists.
 		Stock []SiteImageState `json:"stock"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
-	a.recordSiteSelf(id, strings.TrimSpace(in.Payload), in.Version)
+	a.recordSiteSelf(id, strings.TrimSpace(in.Payload), in.Version, strings.TrimSpace(in.RelayURL))
 	if in.Stock != nil {
 		a.recordSiteImages(id, in.Stock)
 	}
@@ -1328,7 +1330,12 @@ func (a *App) mergedConfig(b *Blade) (map[string]any, string) {
 	}
 	mergeInto(out, a.configFor("blade:"+b.Serial))
 
-	// Values derived from the position always win.
+	// Values derived from the position always win — including where this
+	// blade should report. A blade belongs to the site it stands in, and the
+	// site is the machine that can still answer when the link here is down.
+	if url := a.siteRelayURL(b.SiteID); url != "" {
+		out["server_url"] = url
+	}
 	if b.Hostname != "" {
 		out["hostname"] = b.Hostname
 	}

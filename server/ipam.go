@@ -642,3 +642,17 @@ func (a *App) renameSiteBlades(siteID int64) (int, error) {
 var hostPrefixRe = regexp.MustCompile(`^[a-z0-9]{0,8}$`)
 
 func validHostPrefix(p string) bool { return hostPrefixRe.MatchString(p) }
+
+// siteRelayURL is where the blades of one site report. Empty until that site
+// has said so, and empty is the right answer then: a blade keeps whatever it
+// was told at installation rather than being sent somewhere unknown.
+func (a *App) siteRelayURL(siteID int64) string {
+	if siteID == 0 {
+		return ""
+	}
+	st, err := a.getSite(siteID)
+	if err != nil {
+		return ""
+	}
+	return st.RelayURL
+}

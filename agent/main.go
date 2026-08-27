@@ -47,6 +47,7 @@ type Config struct {
 
 type agent struct {
 	cfg     Config
+	envFile string
 	http    *http.Client
 	applied string   // last applied config version
 	pending []string // changes from the last apply, waiting to be reported
@@ -89,8 +90,9 @@ func main() {
 		log.Fatalf("configuration: %v", err)
 	}
 	a := &agent{
-		cfg:  cfg,
-		http: &http.Client{Timeout: 30 * time.Second},
+		cfg:     cfg,
+		envFile: *envFile,
+		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 	a.applied = readState()
 
@@ -317,6 +319,13 @@ func (a *agent) syncConfig() error {
 	}
 	// The agent's own rules travel with everything else it is told.
 	a.pol = readAgentPolicy(cr.Config)
+
+	// So does the address to talk to. Whoever handed this configuration over
+	// says where a blade in this room should report — the site next door
+	// rather than a centre across a link. Taken up only when it answers.
+	if change := a.adoptServer(cr.Config, a.envFile); change != "" {
+		a.pending = append(a.pending, change)
+	}
 
 	log.Printf("new configuration %s — applying", cr.Version)
 	changes, err := applyConfig(cr.Config)

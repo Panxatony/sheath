@@ -308,6 +308,11 @@ func (s *site) report(d *desired) {
 		"dnsmasq_ok": true,
 		"stock":      s.stockHeld(),
 		"payload":    s.payloadHeld(),
+		// Where the blades of this site should report. Only this machine
+		// knows it — the centre has never seen this network — and without it
+		// the centre can only hand out its own address, which is how every
+		// blade ended up talking across the link instead of across the room.
+		"relay_url": s.cfg.RelayURL,
 	})
 	req, err := http.NewRequest("POST",
 		fmt.Sprintf("%s/api/v1/site/%d/status", s.cfg.Server, s.cfg.SiteID),

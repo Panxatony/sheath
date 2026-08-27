@@ -175,6 +175,7 @@ var migrations = []string{
 	`ALTER TABLE sites ADD COLUMN payload TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN enroll_code TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN host_prefix TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN relay_url TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN enroll_until TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
@@ -226,6 +227,10 @@ type Site struct {
 	// What goes into the names of blades here: blade-<prefix>-r1s01. Empty
 	// keeps the name a single-site installation has always had.
 	HostPrefix string `json:"host_prefix"`
+
+	// Where the blades of this site report. The site tells the centre; only
+	// the site knows the address its own blades can reach.
+	RelayURL string `json:"relay_url"`
 }
 
 type Rack struct {
@@ -961,7 +966,7 @@ func (a *App) listImages() ([]Image, error) {
 
 const siteCols = `id,name,location,net_base,gateway,dns,domain,
 	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created,
-	payload,site_version,enroll_code,enroll_until,host_prefix`
+	payload,site_version,enroll_code,enroll_until,host_prefix,relay_url`
 
 func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	var st Site
@@ -969,7 +974,7 @@ func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	err := sc.Scan(&st.ID, &st.Name, &st.Location, &st.NetBase, &st.Gateway, &st.DNS,
 		&st.Domain, &st.PoolFrom, &st.PoolTo, &st.OffsetBase, &st.OffsetStep,
 		&local, &st.Token, &st.LastSeen, &st.Created, &st.Payload, &st.SiteVersion,
-		&st.EnrollCode, &st.EnrollUntil, &st.HostPrefix)
+		&st.EnrollCode, &st.EnrollUntil, &st.HostPrefix, &st.RelayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -1232,7 +1237,14 @@ func (a *App) clearAlert(serial string) error {
 // recordSiteSelf keeps what a site says about itself: which netboot payload it
 // serves and which version of sheath-site is serving it. Written on every
 // heartbeat, because a payload can change between two of them.
-func (a *App) recordSiteSelf(id int64, payload, siteVersion string) {
+func (a *App) recordSiteSelf(id int64, payload, siteVersion, relayURL string) {
+	if relayURL != "" {
+		_, _ = a.db.Exec(`UPDATE sites SET payload=?, site_version=?, relay_url=? WHERE id=?`,
+			payload, siteVersion, strings.TrimRight(relayURL, "/"), id)
+		return
+	}
+	// A site older than this field says nothing about its relay, and nothing
+	// is not an instruction to forget where its blades report.
 	_, _ = a.db.Exec(`UPDATE sites SET payload=?, site_version=? WHERE id=?`,
 		payload, siteVersion, id)
 }

@@ -197,17 +197,32 @@ func (r *relay) answerWithLocalImage(w http.ResponseWriter, resp *http.Response,
 	}
 	var job map[string]any
 	if err := json.Unmarshal(raw, &job); err == nil {
+		changed := false
 		if u, _ := job["url"].(string); u != "" {
 			name := u[strings.LastIndexByte(u, '/')+1:]
 			if name != "" && !strings.Contains(name, "..") {
 				if _, err := os.Stat(filepath.Join(r.s.cfg.ImagesDir, name)); err == nil {
 					job["url"] = r.selfURL(req) + "/images/" + name
-					if out, err := json.Marshal(job); err == nil {
-						raw = out
-						log.Printf("provision %s: serving %s from this site",
-							req.PathValue("serial"), name)
-					}
+					changed = true
+					log.Printf("provision %s: serving %s from this site",
+						req.PathValue("serial"), name)
 				}
+			}
+		}
+		// The address the installer writes into the blade's seed, which is the
+		// address that blade will talk to for the rest of its life. The centre
+		// fills in its own, which is right for nobody: a blade should reach the
+		// machine in its own room, and that machine can answer while the link
+		// to the centre is down — which is the entire reason it exists.
+		if u, _ := job["server_url"].(string); u != "" && u != r.selfURL(req) {
+			job["server_url"] = r.selfURL(req)
+			changed = true
+			log.Printf("provision %s: this blade will talk to this site",
+				req.PathValue("serial"))
+		}
+		if changed {
+			if out, err := json.Marshal(job); err == nil {
+				raw = out
 			}
 		}
 	}
@@ -278,10 +293,8 @@ func (r *relay) bladeConfig(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	cfg := b.Config
-	if aimed, changed := r.aimBinariesHere(cfg, req); changed {
-		cfg = aimed
-	}
+	cfg, _ := r.aimBinariesHere(b.Config, req)
+	cfg, _ = r.aimHere(cfg, req)
 	writeJSON(w, 200, map[string]any{"version": b.ConfigVersion, "config": cfg})
 }
 
@@ -433,8 +446,10 @@ func (r *relay) answerWithLocalBinaries(w http.ResponseWriter, resp *http.Respon
 	var doc map[string]any
 	if json.Unmarshal(raw, &doc) == nil {
 		if cfg, ok := doc["config"].(map[string]any); ok {
-			if aimed, changed := r.aimBinariesHere(cfg, req); changed {
-				doc["config"] = aimed
+			cfg, a := r.aimBinariesHere(cfg, req)
+			cfg, b := r.aimHere(cfg, req)
+			if a || b {
+				doc["config"] = cfg
 				if out, merr := json.Marshal(doc); merr == nil {
 					raw = out
 				}
@@ -451,6 +466,26 @@ func (r *relay) answerWithLocalBinaries(w http.ResponseWriter, resp *http.Respon
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(raw)
+}
+
+// aimHere puts this site's address into the configuration a blade is about to
+// apply, so the blade reports here rather than to whichever machine the centre
+// named. A blade installed before the relay learned to name itself was pointed
+// at the centre; this is how it finds its way home without being reinstalled.
+//
+// The agent takes it up only after checking that the address answers, which
+// is the safety: a wrong -relay-url costs a log line rather than a blade.
+func (r *relay) aimHere(cfg map[string]any, req *http.Request) (map[string]any, bool) {
+	self := r.selfURL(req)
+	if cur, _ := cfg["server_url"].(string); cur == self {
+		return cfg, false
+	}
+	cp := make(map[string]any, len(cfg)+1)
+	for k, v := range cfg {
+		cp[k] = v
+	}
+	cp["server_url"] = self
+	return cp, true
 }
 
 // aimBinariesHere rewrites the address of every binary this site actually

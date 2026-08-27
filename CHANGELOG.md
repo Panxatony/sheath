@@ -5,6 +5,25 @@ on `main`.
 
 ## Unreleased
 
+### Fixed
+- **An installed blade talks to its own site now, not to the centre.** The
+  installer wrote whatever address the centre named into the seed, and the
+  centre naturally named itself — so the relay standing in the same room
+  answered nothing for any blade, its caches were of no use to an agent, and
+  an outage at the centre stopped every agent everywhere. That is the
+  situation the split exists to survive.
+
+  Three pieces: a site tells the centre where its blades should report, which
+  only the site can know; the centre puts that address into the configuration
+  of every blade standing in that site; and the relay writes its own address
+  into the seed as the installer places it, so a blade installed today never
+  learns the wrong one in the first place.
+
+  A blade already carrying the wrong address moves by itself — but only after
+  checking that the new one answers, because an address that does not answer
+  is a blade gone quiet, and a quiet blade cannot be told to come back. The
+  move is reported like any other applied change.
+
 ## v0.8.2-alpha — 2026-08-27
 
 An afternoon of using the thing, and what using it turned up: an installation
