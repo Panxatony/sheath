@@ -645,6 +645,7 @@ var catalog = map[string]map[Lang]string{
 	"st.warn":         {LangEN: "attention", LangDE: "auffällig"},
 	"st.offline":      {LangEN: "offline", LangDE: "offline"},
 	"st.enrolled":     {LangEN: "no agent yet", LangDE: "noch kein Agent"},
+	"st.installer":    {LangEN: "in the installer", LangDE: "im Installer"},
 	"st.provisioning": {LangEN: "provisioning", LangDE: "wird aufgesetzt"},
 	"st.writing":      {LangEN: "writing %s %%", LangDE: "schreibt %s %%"},
 	"msg.installrequested": {

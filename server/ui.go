@@ -1193,6 +1193,16 @@ func (a *App) rowStatus(b *Blade, lvl healthLevel) (key, led, arg string) {
 	if pct, ok := a.writingPercent(b.Serial); ok {
 		return "st.writing", "id", pct
 	}
+	// Sitting in the mini OS. It has an address, it has asked the site what to
+	// do, and it is waiting — which looks like "no agent yet" from the
+	// outside and is a quite different thing: the blade is up, it is talking,
+	// and it is one image away from being installed.
+	if stage, fresh := a.stageOnTheWire(b.Serial); fresh {
+		switch stage {
+		case stageInstaller, stageRamdisk:
+			return "st.installer", "id", ""
+		}
+	}
 	switch {
 	case b.State == "provisioning":
 		return "st.provisioning", "id", ""

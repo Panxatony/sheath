@@ -507,3 +507,20 @@ func (a *App) addressOnTheWire(serial string) string {
 	}
 	return ip
 }
+
+// stageOnTheWire is where a blade stands on the wire, and whether that is news
+// or history. Ten minutes: a mini OS asks the site every thirty seconds, so a
+// session older than that belongs to a blade that has moved on — usually into
+// the system it just installed.
+func (a *App) stageOnTheWire(serial string) (string, bool) {
+	var stage, last string
+	if err := a.db.QueryRow(`SELECT stage,last_seen FROM netboot WHERE serial=?
+		ORDER BY last_seen DESC LIMIT 1`, serial).Scan(&stage, &last); err != nil {
+		return "", false
+	}
+	t, err := time.Parse(time.RFC3339, last)
+	if err != nil {
+		return stage, false
+	}
+	return stage, time.Since(t) < 10*time.Minute
+}
