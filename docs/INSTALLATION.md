@@ -1056,6 +1056,17 @@ because the Debian raspi image ships neither `openssh-server` nor cloud-init: a
 blade installed from it has exactly one door, the Sheath agent — and one door is
 one too few when the question is why the agent did not start.
 
+Two things follow from that, and both are in the installation path rather than
+in a runbook. The installer **enables the ssh unit** while it still has the root
+filesystem mounted — a symlink in `multi-user.target.wants`, which is all
+`systemctl enable` writes — because a service nobody ever started is a door
+that was fitted and never hung. And the agent **reports what it finds**: whether
+`sshd` is installed, whether it runs, whether anything listens on 22, and how
+many host keys there are. The last of those is the usual answer when a blade
+answers every ping and refuses every connection: sshd will not start without
+host keys, and the distribution makes them on the first boot — where that step
+did not happen, nothing on the blade says so.
+
 A catalogue entry carries more than bytes:
 
 | Field | Meaning |

@@ -1116,6 +1116,15 @@ func (c *client) seed(job *provisionResp, target string) error {
 		c.note("SSH keys for root placed (%d)", len(job.SSHKeys))
 	}
 
+	// Keys are no use to anybody if nothing answers on port 22.
+	if msg, err := enableSSH(mnt); err != nil {
+		logf("SSH not enabled: %v", err)
+		c.note("SSH not enabled: %v", err)
+	} else {
+		logf("SSH: %s", msg)
+		c.note("SSH: %s", msg)
+	}
+
 	// If an agent binary is available it is installed straight away. If not
 	// that is no error — the system simply boots without one.
 	if job.Opts.NoAgent {
@@ -1140,6 +1149,73 @@ func (c *client) seed(job *provisionResp, target string) error {
 		c.note("cloud-init seed placed")
 	}
 	return nil
+}
+
+// enableSSH makes sure the installed system will answer on port 22.
+//
+// Three blades were written, took their keys, reported in for a day — and
+// refused every connection, because nothing ever started the service. Keys are
+// placed while the filesystem is mounted here, and this is the same kind of
+// edit: "enabled" is a symlink in multi-user.target.wants, and that is all
+// systemctl enable writes. Doing it now rather than later is the point, since
+// later means a shell on a blade that has no shell.
+//
+// What it cannot do is make host keys — sshd refuses to start without them,
+// and the distribution makes them on the first boot. So they are counted and
+// said out loud: a system that arrives with none and never makes any is the
+// other half of the same silence.
+func enableSSH(mnt string) (string, error) {
+	unit, target := "", ""
+	for _, rel := range []string{
+		"usr/lib/systemd/system/ssh.service",
+		"lib/systemd/system/ssh.service",
+		"usr/lib/systemd/system/sshd.service",
+		"lib/systemd/system/sshd.service",
+	} {
+		if st, err := os.Stat(filepath.Join(mnt, rel)); err == nil && !st.IsDir() {
+			unit, target = filepath.Base(rel), "/"+rel
+			break
+		}
+	}
+	if unit == "" {
+		return "", errors.New("this image has no ssh unit")
+	}
+	keys := fmt.Sprintf(", %d host keys", hostKeysIn(mnt))
+
+	// A system that starts sshd from a socket has already arranged it, and
+	// enabling the service as well is how the two end up fighting over the
+	// port.
+	sock := strings.TrimSuffix(unit, ".service") + ".socket"
+	if _, err := os.Lstat(filepath.Join(mnt, "etc/systemd/system/sockets.target.wants", sock)); err == nil {
+		return "left alone, " + sock + " already starts it" + keys, nil
+	}
+	wants := filepath.Join(mnt, "etc/systemd/system/multi-user.target.wants")
+	link := filepath.Join(wants, unit)
+	if _, err := os.Lstat(link); err == nil {
+		return unit + " was already enabled" + keys, nil
+	}
+	if err := os.MkdirAll(wants, 0o755); err != nil {
+		return "", err
+	}
+	if err := os.Symlink(target, link); err != nil {
+		return "", err
+	}
+	return unit + " enabled" + keys, nil
+}
+
+// hostKeysIn counts the keys sshd needs before it will start.
+func hostKeysIn(mnt string) int {
+	entries, err := os.ReadDir(filepath.Join(mnt, "etc", "ssh"))
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "ssh_host_") && strings.HasSuffix(e.Name(), "_key") {
+			n++
+		}
+	}
+	return n
 }
 
 // seedRootKeys creates authorized_keys for root. Deliberately root rather

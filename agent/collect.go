@@ -60,6 +60,12 @@ func collectFacts() map[string]any {
 	for k, v := range hardware() {
 		f[k] = v
 	}
+	// Whether this blade can be reached by hand, which is not a thing the
+	// agent's own health says anything about — it reports over its own
+	// connection and is fine either way.
+	for k, v := range sshAccess() {
+		f[k] = v
+	}
 	return f
 }
 

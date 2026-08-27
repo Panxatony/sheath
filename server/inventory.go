@@ -48,6 +48,8 @@ type invRow struct {
 	OrderWarn string // set when that order cannot reach the install target
 	OS        string
 	Kernel    string
+	SSH       string // whether anyone could get a shell on it
+	SSHBad    bool
 	Agent     string
 	Seen      string
 	LED       string
@@ -213,6 +215,23 @@ func (a *App) inventory(l Lang) ([]invRow, invSummary, error) {
 				r.OrderWarn = T(l, "bo.unreachable", word)
 			}
 		}
+		// Whether this blade can be opened by hand. It says nothing about
+		// health — a blade with no sshd reports in as happily as any other —
+		// which is exactly why it has to be written down somewhere.
+		if present, ok := f["ssh_present"].(bool); ok {
+			switch {
+			case !present:
+				r.SSH, r.SSHBad = T(l, "ssh.none"), true
+			case truth(f["ssh_listening"]):
+				r.SSH = T(l, "ssh.open")
+			default:
+				r.SSH, r.SSHBad = T(l, "ssh.shut"), true
+				if n, ok := num(f["ssh_hostkeys"]); ok && n == 0 {
+					r.SSH = T(l, "ssh.nokeys")
+				}
+			}
+		}
+
 		if r.Board == "" && r.RAM == "" {
 			r.Missing = true
 			sum.Unknown++
@@ -263,6 +282,11 @@ func ramText(bytes int64) string {
 	default:
 		return fmt.Sprintf("%.1f GB", gb)
 	}
+}
+
+func truth(v any) bool {
+	b, _ := v.(bool)
+	return b
 }
 
 func str(m map[string]any, k string) string {

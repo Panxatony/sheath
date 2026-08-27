@@ -387,6 +387,13 @@ var catalog = map[string]map[Lang]string{
 	"bo.hint": {
 		LangEN: "The boot order lives in the module's EEPROM and is read out through the firmware — vcgencmd on the installed system, and the mini OS on every netboot, so a blade that has never been installed still has one on file. A blade whose order does not name the device its image goes on will write the image and then boot nowhere.",
 		LangDE: "Die Bootreihenfolge steht im EEPROM des Moduls und wird über die Firmware ausgelesen — mit vcgencmd auf dem installierten System und beim Netboot im Mini-OS, sodass auch ein nie installiertes Blade eine hinterlegt hat. Ein Blade, dessen Reihenfolge das Gerät seines Images nicht nennt, schreibt das Image und bootet danach nirgendwohin."},
+	"ssh.open":   {LangEN: "SSH open", LangDE: "SSH offen"},
+	"ssh.shut":   {LangEN: "port 22 shut", LangDE: "Port 22 zu"},
+	"ssh.none":   {LangEN: "no sshd", LangDE: "kein sshd"},
+	"ssh.nokeys": {LangEN: "port 22 shut, no host keys", LangDE: "Port 22 zu, keine Host-Keys"},
+	"ssh.hint": {
+		LangEN: "Whether a blade can be opened by hand is not part of its health — a blade with no sshd reports in as happily as any other. The installer switches the service on while it has the filesystem mounted; host keys are the distribution's job on the first boot, and a blade that arrives with none will refuse every connection.",
+		LangDE: "Ob ein Blade von Hand zu öffnen ist, gehört nicht zu seiner Gesundheit — eines ohne sshd meldet sich so zufrieden wie jedes andere. Der Installer schaltet den Dienst ein, solange er das Dateisystem eingehängt hat; Host-Keys erzeugt die Distribution beim ersten Start, und ein Blade, das ohne sie ankommt, lehnt jede Verbindung ab."},
 	"inv.fwhint": {
 		LangEN: "The bootloader version and the day it was built come from the device tree, where the firmware writes them; so does how this blade came up, which is worth a second look when a blade you meant to reinstall says it came from its NVMe. The VideoCore line needs vcgencmd, which Debian does not ship.",
 		LangDE: "Bootloader-Version und Baudatum stehen im Device Tree, wo die Firmware sie hinterlegt — ebenso, wie dieses Blade hochgekommen ist, was einen zweiten Blick wert ist, wenn ein Blade, das neu installiert werden sollte, von seiner NVMe kam. Die VideoCore-Zeile braucht vcgencmd, das Debian nicht mitliefert."},

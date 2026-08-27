@@ -3698,7 +3698,8 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
             <div class="hint">{{.OrderText}}</div>{{end}}
           {{if .OrderWarn}}<div><span class="chip crit">{{.OrderWarn}}</span></div>{{end}}</td>
         <td>{{.OS}}
-          <div class="mono sub2">{{.Kernel}}</div></td>
+          <div class="mono sub2">{{.Kernel}}</div>
+          {{if .SSH}}<div>{{if .SSHBad}}<span class="chip warn">{{.SSH}}</span>{{else}}<span class="hint">{{.SSH}}</span>{{end}}</div>{{end}}</td>
         <td class="right">
           {{if .Unused}}
           <form method="post" action="/inventory/{{.Serial}}/forget"
@@ -3714,6 +3715,7 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
   {{else}}<div class="body"><p class="hint">{{t .L "inv.empty"}}</p></div>{{end}}
   <div class="body"><p class="hint" style="margin:0">{{t .L "inv.fwhint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "bo.hint"}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "ssh.hint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "inv.forgethint"}}</p></div>
 </div>
 
