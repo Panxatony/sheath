@@ -25,6 +25,17 @@ func (s *site) ensureImages(d *desired) error {
 	}
 	stock := make([]stockItem, 0, len(d.Images))
 	defer func() { s.setStock(stock) }()
+	// What the blades here are assigned. Everything else in the directory is
+	// left over from an assignment somebody has since changed.
+	keep := map[string]bool{}
+	for _, im := range d.Images {
+		name := im.Local
+		if name == "" {
+			name = filepath.Base(im.URL)
+		}
+		keep[name] = true
+	}
+	defer func() { s.pruneImages(keep) }()
 
 	for _, im := range d.Images {
 		name := im.Local
@@ -420,4 +431,59 @@ func binariesIn(cfg map[string]any) []binSpec {
 		out = append(out, binSpec{URL: u, SHA256: sum})
 	}
 	return out
+}
+
+// pruneImages removes what no blade here is assigned to any more.
+//
+// A cache that only grows is a cache that fills the disk, and a site machine
+// is not always a big one: the second site here runs on a Compute Module with
+// six gigabytes, where three images and a payload leave no room for a fourth.
+//
+// Only files this program would have written are considered, and only when
+// the centre has just said what is wanted — an empty list means the centre
+// said nothing useful, not that nothing is needed.
+func (s *site) pruneImages(keep map[string]bool) {
+	if len(keep) == 0 || s.dry {
+		return
+	}
+	entries, err := os.ReadDir(s.cfg.ImagesDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		base := strings.TrimSuffix(strings.TrimSuffix(name, ".verified"), ".part")
+		if keep[base] || !looksLikeImage(base) {
+			continue
+		}
+		path := filepath.Join(s.cfg.ImagesDir, name)
+		var size int64
+		if st, serr := e.Info(); serr == nil {
+			size = st.Size()
+		}
+		if err := os.Remove(path); err != nil {
+			log.Printf("image %s: not removed: %v", name, err)
+			continue
+		}
+		if strings.HasSuffix(name, ".verified") {
+			continue // the stamp goes with its file, without a line of its own
+		}
+		log.Printf("image %s: removed, no blade here uses it (%d MB freed)", name, size>>20)
+		s.note("", "info", fmt.Sprintf("cached image %s removed, no blade here uses it", name))
+	}
+}
+
+// looksLikeImage keeps the pruning to files that are images. Anything else in
+// that directory was put there by a person, and deleting a person's file
+// because it sat in the wrong place is not a thing a cache should do.
+func looksLikeImage(name string) bool {
+	for _, suf := range []string{".img.xz", ".img.gz", ".img.zst", ".img", ".raw", ".raw.xz", ".tar.xz"} {
+		if strings.HasSuffix(name, suf) {
+			return true
+		}
+	}
+	return false
 }

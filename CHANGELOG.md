@@ -6,6 +6,15 @@ on `main`.
 ## Unreleased
 
 ### Added
+- A site removes cached images no blade of its own is assigned to any more.
+  The cache only ever grew, which is fine on a machine with a 500 GB disk and
+  wrong on the one that replaced it: a Compute Module with six gigabytes, where
+  three images and a payload leave no room for a fourth. Only files this
+  program would have written are considered, and only when the centre has just
+  said what is wanted — an empty list means the centre said nothing, not that
+  nothing is needed.
+
+### Added
 - **An installation can go to the eMMC or an SD card, not only to the NVMe.**
   The device was already a setting; what was missing is everything around it.
   A blade is now offered the devices it actually reported — the interface lists
