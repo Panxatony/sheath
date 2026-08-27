@@ -881,6 +881,14 @@ func (a *App) finishWipe(serial string) error {
 // netboot. That is a deliberate act — merely assigning an image triggers
 // nothing.
 func (a *App) requestInstall(serial string) error {
+	// Asked before the blade reboots, not after: an installer that finds no
+	// such device, or a device the image does not fit on, fails in a place
+	// where the only witness is a serial console.
+	if b, err := a.getBlade(serial); err == nil {
+		if err := a.checkTarget(b); err != nil {
+			return err
+		}
+	}
 	res, err := a.db.Exec(
 		`UPDATE blades SET install_state=? WHERE serial=? AND image<>''`,
 		installPending, serial)

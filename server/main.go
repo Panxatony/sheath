@@ -229,6 +229,7 @@ func main() {
 	}
 
 	mux.HandleFunc("POST /blades/{serial}/unassign", app.requireUI(app.hUIUnassign))
+	mux.HandleFunc("POST /blades/{serial}/target", app.requireUI(app.hUIBladeTarget))
 	mux.HandleFunc("POST /blades/{serial}/image", app.requireUI(app.hUIBladeImage))
 	mux.HandleFunc("POST /blades/{serial}/actions/{kind}", app.requireUI(app.hUIBladeAction))
 	mux.HandleFunc("POST /netboot/{mac}/image", app.requireUI(app.hUINetbootImage))

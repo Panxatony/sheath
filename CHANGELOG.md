@@ -5,6 +5,27 @@ on `main`.
 
 ## Unreleased
 
+### Added
+- **An installation can go to the eMMC or an SD card, not only to the NVMe.**
+  The device was already a setting; what was missing is everything around it.
+  A blade is now offered the devices it actually reported — the interface lists
+  them per slot with their sizes — and an installation is refused before the
+  blade reboots where the device is not there at all, or where the image does
+  not fit on it: a 7.8 GB eMMC will not hold an image that asks for 8. The
+  installer takes the device from the job for its "is a system already here"
+  check too, instead of always looking at `/dev/nvme0n1`, and its boot-order
+  advice follows the target.
+- The agent and the mini OS tell an eMMC from an SD card. Both appear as
+  `mmcblk0`, and a Compute Module Lite with a card in the slot was being called
+  a module with eMMC. The kernel names the type, and where it does not, the
+  eMMC-only boot partitions do.
+
+### Changed
+- Storage is counted in the units it is sold in. A 500 GB SSD said "465.8 GB"
+  because the bytes were divided by 2³⁰ and labelled GB; it now reads 500.1 GB,
+  and the eMMC in these blades reads 7.8 GB rather than 7.3. Memory keeps
+  powers of two, because that is how memory is sold.
+
 ### Fixed
 - A blade at a second site fetched its agent binaries from the **first** site,
   because the addresses in the desired state are absolute and name whichever

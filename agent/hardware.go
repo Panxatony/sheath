@@ -47,12 +47,24 @@ func hardware() map[string]any {
 		h["cpu_mhz"] = mhz
 	}
 
-	// eMMC: a CM4 Lite has none, and the difference decides whether a blade
-	// can be brought up without a card at all.
+	// The card device, and which of the two things it is. A Compute Module
+	// with eMMC and a Lite with an SD card in the slot both show up as
+	// mmcblk0, and calling a card "eMMC" would be a lie the interface then
+	// repeats — the kernel says which it is, and eMMC additionally brings
+	// boot partitions a card does not have.
 	if sz, name := blockSize("mmcblk0"); sz > 0 {
-		h["emmc_bytes"] = sz
+		kind := mmcKind()
+		h["mmc_kind"], h["mmc_bytes"] = kind, sz
 		if name != "" {
-			h["emmc_model"] = name
+			h["mmc_model"] = name
+		}
+		if kind == "sd" {
+			h["sd_bytes"], h["emmc_bytes"] = sz, int64(0)
+		} else {
+			h["emmc_bytes"] = sz
+			if name != "" {
+				h["emmc_model"] = name
+			}
 		}
 	} else {
 		h["emmc_bytes"] = int64(0)
@@ -299,6 +311,22 @@ func maxMHz() int {
 		return 0
 	}
 	return khz / 1000
+}
+
+// mmcKind tells eMMC from an SD card. The kernel names the type outright, and
+// where it does not, the boot partitions do: eMMC has mmcblk0boot0 and boot1,
+// a card has neither.
+func mmcKind() string {
+	switch strings.ToUpper(firstLine("/sys/block/mmcblk0/device/type")) {
+	case "MMC":
+		return "emmc"
+	case "SD":
+		return "sd"
+	}
+	if _, err := os.Stat("/sys/block/mmcblk0boot0"); err == nil {
+		return "emmc"
+	}
+	return "sd"
 }
 
 // hasWireless says whether this module has radio on it. The revision code

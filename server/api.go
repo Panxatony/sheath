@@ -1010,6 +1010,7 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 			"status":      "idle",
 			"serial":      serial,
 			"image":       b.Image,
+			"target":      a.installTarget(b),
 			"retry_after": 30,
 			"message": "No install requested. This blade should boot locally — " +
 				"is BOOT_ORDER set to 0xf162 (network, NVMe, SD/eMMC)?",
@@ -1511,4 +1512,18 @@ func (a *App) factsOf(serial string) string {
 		return "{}"
 	}
 	return raw
+}
+
+// putConfig writes one scope. The handlers had this inline twice; the
+// interface needs it as well, and a third copy of an upsert is a third place
+// to get it wrong.
+func (a *App) putConfig(scope string, body map[string]any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	_, err = a.db.Exec(`INSERT INTO configs(scope,body,updated) VALUES(?,?,?)
+		ON CONFLICT(scope) DO UPDATE SET body=excluded.body,updated=excluded.updated`,
+		scope, string(raw), now())
+	return err
 }

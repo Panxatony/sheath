@@ -17,6 +17,8 @@ import (
 // ── Views ────────────────────────────────────────────────────────────
 
 type slotView struct {
+	Devices  []installDevice // what this blade says it has to install onto
+	Target   string          // the one it would be installed to
 	Slot     int
 	Empty    bool
 	Serial   string
@@ -208,6 +210,7 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 		h := healthMap(&b)
 		statusKey, statusLED, statusArg := a.rowStatus(&b, lvl)
 		sv := slotView{
+			Devices: a.installDevices(&b), Target: a.installTarget(&b),
 			Slot: s, Serial: b.Serial, Hostname: b.Hostname, IP: b.IP, MAC: b.MAC,
 			Image: b.Image, State: b.State, Ago: ago(l, b.LastSeen),
 			Install: T(l, "inst."+installOr(b.InstallState)),
@@ -1418,6 +1421,7 @@ var tmplFuncs = template.FuncMap{
 	},
 	"otherLang": otherLang,
 	"langName":  langName,
+	"hsize":     human,
 }
 
 const baseCSS = `
@@ -2060,6 +2064,17 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   </select>
                   <button class="mini ghost" type="submit">{{t $top.L "rk.set"}}</button>
                 </form>
+
+                {{if .Devices}}
+                <form method="post" action="/blades/{{.Serial}}/target">
+                  <label for="tgt{{.Slot}}">{{t $top.L "tgt.title"}}</label>
+                  {{$cur := .Target}}
+                  <select id="tgt{{.Slot}}" name="target">
+                    {{range .Devices}}<option value="{{.Path}}"{{if eq .Path $cur}} selected{{end}}>{{.Label}} · {{hsize .Bytes}}</option>{{end}}
+                  </select>
+                  <button class="mini ghost" type="submit">{{t $top.L "tgt.set"}}</button>
+                </form>
+                {{end}}
 
                 <div class="menu-sep"></div>
                 <div class="menu-row">
@@ -2714,17 +2729,22 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// human renders a byte count the way someone reads it out loud.
+// human renders a byte count the way someone reads it out loud — and in the
+// units the thing itself is sold in. Disks, cards and downloads are counted in
+// powers of ten by everyone who makes them: a 500 GB SSD holds 500·10⁹ bytes,
+// and calling that "465.8 GB" is how an inventory ends up disagreeing with the
+// sticker on the drive. Memory is the other way round and has ramText.
 func human(n int64) string {
+	const k = 1000
 	switch {
-	case n >= 1<<40:
-		return fmt.Sprintf("%.1f TB", float64(n)/float64(1<<40))
-	case n >= 1<<30:
-		return fmt.Sprintf("%.1f GB", float64(n)/float64(1<<30))
-	case n >= 1<<20:
-		return fmt.Sprintf("%.0f MB", float64(n)/float64(1<<20))
-	case n >= 1<<10:
-		return fmt.Sprintf("%.0f KB", float64(n)/float64(1<<10))
+	case n >= k*k*k*k:
+		return fmt.Sprintf("%.1f TB", float64(n)/(k*k*k*k))
+	case n >= k*k*k:
+		return fmt.Sprintf("%.1f GB", float64(n)/(k*k*k))
+	case n >= k*k:
+		return fmt.Sprintf("%.0f MB", float64(n)/(k*k))
+	case n >= k:
+		return fmt.Sprintf("%.0f KB", float64(n)/k)
 	case n > 0:
 		return fmt.Sprintf("%d B", n)
 	}
@@ -3657,4 +3677,48 @@ func humanDur(l Lang, d time.Duration) string {
 		return fmt.Sprintf("%d min", int(d.Minutes()))
 	}
 	return fmt.Sprintf("%.0f h %d min", d.Hours(), int(d.Minutes())%60)
+}
+
+// hUIBladeTarget points one blade at one of its own devices. Written into
+// that blade's own configuration scope, so it outlives the next global change
+// and applies to nothing else.
+func (a *App) hUIBladeTarget(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	serial := r.PathValue("serial")
+	b, err := a.getBlade(serial)
+	if err != nil {
+		redirectMsg(w, r, backTo(r, "/"), "err", T(l, "err.bladegone"))
+		return
+	}
+	to := bladePage(b, r)
+	if err := r.ParseForm(); err != nil {
+		redirectMsg(w, r, to, "err", T(l, "err.form"))
+		return
+	}
+	target := strings.TrimSpace(r.FormValue("target"))
+	ok := false
+	for _, d := range a.installDevices(b) {
+		if d.Path == target {
+			ok = true
+		}
+	}
+	if !ok {
+		redirectMsg(w, r, to, "err",
+			errText(l, me("err.nodevice", target, deviceList(a.installDevices(b)))))
+		return
+	}
+	scope := "blade:" + serial
+	cfg := a.configFor(scope)
+	install, _ := cfg["install"].(map[string]any)
+	if install == nil {
+		install = map[string]any{}
+	}
+	install["install_target"] = target
+	cfg["install"] = install
+	if err := a.putConfig(scope, cfg); err != nil {
+		redirectMsg(w, r, to, "err", errText(l, err))
+		return
+	}
+	a.logEvent(serial, "info", "install target set to "+target)
+	redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "tgt.saved"), b.Hostname, target))
 }

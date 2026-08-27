@@ -281,25 +281,33 @@ func (c *client) runWipe(job *provisionResp, target string) error {
 // but the normal case on every restart of a finished blade — it should boot
 // locally instead of landing here.
 type idleErr struct {
-	msg   string
-	image string
+	msg    string
+	image  string
+	target string
 }
 
 func (e *idleErr) Error() string { return "no installation requested" }
 
 func explainIdle(e *idleErr) {
+	target := e.target
+	if target == "" {
+		target = defaultTarget
+	}
 	logf("")
 	logf("No installation requested.")
 	if e.image != "" {
 		logf("Assigned would be: %s", e.image)
 	}
 	logf("")
-	if installedLooking(defaultTarget) {
-		logf("A system is already present on %s.", defaultTarget)
+	if installedLooking(target) {
+		logf("A system is already present on %s.", target)
 		logf("This blade should boot from it, not over the network.")
 		logf("")
 		logf("  Set during bring-up via rpiboot:")
 		logf("      BOOT_ORDER=0xf162    (network, then NVMe, then SD/eMMC)")
+		if strings.HasPrefix(target, "/dev/mmcblk") {
+			logf("      — the 1 in it is what reaches this blade's %s", target)
+		}
 		logf("")
 		logf("  With network before NVMe the blade lands here on every start")
 		logf("  — and without this guard it would reinstall itself every")
@@ -623,8 +631,16 @@ func (c *client) waitForJob(mac string) (*provisionResp, error) {
 		// nobody was listening any more. Asking again is safe: only "go"
 		// ever writes, and "go" needs someone to press the button.
 		if job.Status == "idle" {
+			// The device the centre would install to, which is not always an
+			// NVMe: a blade may be pointed at its eMMC or at a card, and the
+			// question "is there already a system here" has to be asked of
+			// the same disk the answer would be written to.
+			local := job.Target
+			if local == "" {
+				local = defaultTarget
+			}
 			if !idleShown {
-				explainIdle(&idleErr{msg: job.Message, image: job.Image})
+				explainIdle(&idleErr{msg: job.Message, image: job.Image, target: local})
 				idleShown = true
 				announced = true
 				idleSince = time.Now()
@@ -635,9 +651,9 @@ func (c *client) waitForJob(mac string) (*provisionResp, error) {
 			// nobody. Restarting is safe: nothing has been written, and if
 			// the tag really were still set the answer would be "go", not
 			// "idle".
-			if installedLooking(defaultTarget) && time.Since(idleSince) > time.Minute {
+			if installedLooking(local) && time.Since(idleSince) > time.Minute {
 				logf("")
-				logf("A system is on the disk and no installation is requested.")
+				logf("A system is on %s and no installation is requested.", local)
 				logf("Restarting into it in 5 seconds.")
 				time.Sleep(5 * time.Second)
 				reboot()
