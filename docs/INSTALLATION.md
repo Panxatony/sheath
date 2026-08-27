@@ -848,9 +848,24 @@ The revision used is recorded in `build/.firmware-ref`. Changing it changes
 what a blade boots, so rebuild and then actually netboot one — the payload is
 the one piece where "it built fine" says nothing.
 
-What is still built by hand is the mini OS itself: `build/Image.gz` and the
-ramdisk skeleton in `build/rootfs`. They are copied from machine to machine and
-have no recipe yet.
+**The mini OS has a recipe too.** It is the Raspberry Pi network installer with
+the imager taken out and the Sheath installer put in its place — a good base
+rather than a lazy one, because it already solves "boot a CM4 over the network
+and have an address": udev, the drivers, dhcpcd, an init that works.
+
+```sh
+sudo tools/build-minios.sh          # into /srv/sheath/build
+```
+
+It fetches `net_install/boot.img` — pinned by checksum, because upstream
+replaces that file in place and the payload every blade boots is not a thing to
+change by accident — takes the kernel and the firmware out of it, unpacks the
+ramdisk, removes the imager along with Qt, the QML plugins, the graphics
+drivers, maps, icons and fonts (57 MB a headless blade has no use for), and
+puts `installer/init` and the freshly built installer in.
+
+Then build the payload with `build-bootimg.sh` and, before trusting it, boot a
+blade on it.
 
 ### 3.10 The backup
 

@@ -6,6 +6,13 @@ on `main`.
 ## Unreleased
 
 ### Added
+- **The mini OS has a recipe.** It was an heirloom — a kernel and a 43 MB
+  ramdisk assembled once and copied from machine to machine, with nobody able
+  to say which kernel it was or how the ramdisk had been made. It turns out to
+  be the Raspberry Pi network installer with the imager swapped for ours, so
+  `tools/build-minios.sh` now does exactly that from the official artefact,
+  pinned by checksum. It also strips what the heirloom kept: the whole QML
+  tree survived in there, and the ramdisk is 24 MB rather than 38.
 - **The address pool and the lease time belong to the site**, and reach the
   wire without a deployment. Both were already fields on the site page, and
   both were ignored: the numbers dnsmasq actually served came from a variable
