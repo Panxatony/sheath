@@ -1074,9 +1074,24 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 // installTarget is where this blade's image goes. Resolved from the most
 // specific answer available: what was said about this blade, then about its
 // site, then the installation-wide default.
+// installTarget is where this blade would be installed. A setting wins,
+// because somebody chose it. Where nobody has chosen, the blade decides for
+// itself: most have an NVMe and that is the answer, but a module with only an
+// eMMC has exactly one possible answer and should not have to be told it.
+// Refusing to install for want of a setting that could only have one value is
+// an obstacle, not a safeguard.
 func (a *App) installTarget(b *Blade) string {
 	if v, ok := a.installSetting(b, "install_target").(string); ok && v != "" {
 		return v
+	}
+	devs := a.installDevices(b)
+	for _, d := range devs {
+		if d.Kind == "nvme" {
+			return d.Path
+		}
+	}
+	if len(devs) == 1 {
+		return devs[0].Path
 	}
 	return "/dev/nvme0n1"
 }

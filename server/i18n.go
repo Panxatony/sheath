@@ -350,11 +350,11 @@ var catalog = map[string]map[Lang]string{
 		LangEN: "A blade standing in a slot is not removed here: take it out of its BladeRunner first, which asks whether its disk should be erased on the way.",
 		LangDE: "Ein Blade in einem Steckplatz wird hier nicht entfernt: nimm es erst aus seinem BladeRunner, wobei gefragt wird, ob die Platte dabei gelöscht werden soll."},
 	"err.nodevice": {
-		LangEN: "this blade has no %s. It reported: %s",
-		LangDE: "Dieses Blade hat kein %s. Gemeldet hat es: %s"},
+		LangEN: "%s has no %s. It reported: %s",
+		LangDE: "%s hat kein %s. Gemeldet hat es: %s"},
 	"err.toosmall": {
-		LangEN: "the %s holds %s, and %s needs %s",
-		LangDE: "Die %s fasst %s, und %s braucht %s"},
+		LangEN: "%s: the %s holds %s, and %s needs %s",
+		LangDE: "%s: Die %s fasst %s, und %s braucht %s"},
 	"tgt.title": {LangEN: "Install to", LangDE: "Installieren auf"},
 	"tgt.set":   {LangEN: "Set", LangDE: "Setzen"},
 	"tgt.saved": {LangEN: "%s will be installed to %s", LangDE: "%s wird auf %s installiert"},

@@ -84,3 +84,52 @@ func TestATargetTooSmallIsRefused(t *testing.T) {
 		t.Error("a device the blade does not have was accepted")
 	}
 }
+
+// A module with one possible answer should not have to be told the answer.
+func TestTheTargetDefaultsToWhatTheBladeHas(t *testing.T) {
+	a := testApp(t)
+	add := func(serial, facts string) *Blade {
+		if _, err := a.db.Exec(`INSERT INTO blades(serial,short_serial,state,token,created,facts_json)
+			VALUES(?,?,'online','t','2026-01-01T00:00:00Z',?)`, serial, serial[8:], facts); err != nil {
+			t.Fatal(err)
+		}
+		b, err := a.getBlade(serial)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+
+	// Only an eMMC: that is the target, without anybody setting it.
+	only := add("10000000000000e1", `{"emmc_bytes":31914983424,"mmc_kind":"emmc","emmc_model":"SP32G"}`)
+	if got := a.installTarget(only); got != "/dev/mmcblk0" {
+		t.Errorf("a blade with only an eMMC defaults to %q", got)
+	}
+	if err := a.checkTarget(only); err != nil {
+		t.Errorf("and it is refused: %v", err)
+	}
+
+	// An NVMe beside an eMMC keeps the old answer: the disk, not the card.
+	both := add("10000000000000e2", `{"nvme_bytes":500107862016,"emmc_bytes":7818182656,"mmc_kind":"emmc"}`)
+	if got := a.installTarget(both); got != "/dev/nvme0n1" {
+		t.Errorf("a blade with both defaults to %q", got)
+	}
+
+	// A blade that has said nothing keeps the constant — the installer finds
+	// out what is there, and refusing here would strand it.
+	quiet := add("10000000000000e3", `{}`)
+	if got := a.installTarget(quiet); got != "/dev/nvme0n1" {
+		t.Errorf("a silent blade defaults to %q", got)
+	}
+
+	// What somebody set always wins.
+	if err := a.putConfig("blade:"+only.Serial, map[string]any{
+		"install": map[string]any{"install_target": "/dev/mmcblk0"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	only, _ = a.getBlade(only.Serial)
+	if got := a.installTarget(only); got != "/dev/mmcblk0" {
+		t.Errorf("the setting was ignored: %q", got)
+	}
+}

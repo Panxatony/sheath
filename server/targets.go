@@ -79,7 +79,7 @@ func (a *App) checkTarget(b *Blade) error {
 		}
 	}
 	if chosen == nil {
-		return me("err.nodevice", target, deviceList(devs))
+		return me("err.nodevice", bladeName(b), target, deviceList(devs))
 	}
 	if b.Image == "" {
 		return nil
@@ -89,7 +89,8 @@ func (a *App) checkTarget(b *Blade) error {
 		return nil
 	}
 	if min > 0 && chosen.Bytes > 0 && chosen.Bytes < min {
-		return me("err.toosmall", chosen.Label, human(chosen.Bytes), b.Image, human(min))
+		return me("err.toosmall", bladeName(b), chosen.Label, human(chosen.Bytes),
+			b.Image, human(min))
 	}
 	return nil
 }
@@ -103,4 +104,14 @@ func deviceList(devs []installDevice) string {
 		out += fmt.Sprintf("%s (%s)", d.Path, d.Label)
 	}
 	return out
+}
+
+// bladeName is what to call a blade in a sentence: the name if it has one,
+// and the serial if nobody has named it yet. A message about "this blade" is
+// no use on a page listing ten of them.
+func bladeName(b *Blade) string {
+	if b.Hostname != "" {
+		return b.Hostname
+	}
+	return b.Serial
 }

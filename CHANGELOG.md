@@ -5,6 +5,16 @@ on `main`.
 
 ## Unreleased
 
+### Fixed
+- A blade with only an eMMC no longer has to be told where to install. The
+  target defaulted to `/dev/nvme0n1` whatever the blade had, so a module
+  without an NVMe was refused — for want of a setting that could only have had
+  one value. A setting still wins where somebody made one; where nobody has,
+  the blade decides from what it reported, and a blade that has said nothing
+  keeps the old default so the installer can find out for itself.
+- Both refusals name the blade. "This blade has no /dev/nvme0n1" is no use on
+  a page listing ten of them.
+
 ### Added
 - **The mini OS has a recipe.** It was an heirloom — a kernel and a 43 MB
   ramdisk assembled once and copied from machine to machine, with nobody able

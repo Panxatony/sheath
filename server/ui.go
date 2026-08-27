@@ -3780,7 +3780,7 @@ func (a *App) hUIBladeTarget(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		redirectMsg(w, r, to, "err",
-			errText(l, me("err.nodevice", target, deviceList(a.installDevices(b)))))
+			errText(l, me("err.nodevice", bladeName(b), target, deviceList(a.installDevices(b)))))
 		return
 	}
 	scope := "blade:" + serial
