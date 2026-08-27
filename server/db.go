@@ -178,6 +178,7 @@ var migrations = []string{
 	`ALTER TABLE sites ADD COLUMN relay_url TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN lease TEXT NOT NULL DEFAULT '1h'`,
 	`ALTER TABLE sites ADD COLUMN enroll_until TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE blades ADD COLUMN probe TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -269,6 +270,9 @@ type Blade struct {
 	ConfigApp    string          `json:"config_applied"`
 	LastSeen     string          `json:"last_seen"`
 	Created      string          `json:"created"`
+	// Set while this blade is meant to come up in the mini OS once, so the
+	// firmware can be read out of it. Empty the rest of the time.
+	Probe string `json:"probe"`
 
 	// derived, not stored
 	IP       string `json:"ip"`
@@ -912,6 +916,68 @@ func (a *App) cancelInstall(serial string) error {
 	return nil
 }
 
+// Reading the firmware out of a blade that is already running.
+//
+// Some of what a module knows about itself is only readable through the
+// Raspberry Pi firmware, and a running system often cannot reach it: an
+// upstream kernel has no mailbox device, and Debian ships no vcgencmd. The
+// mini OS can, on every netboot — but a blade in a slot is not offered netboot
+// once it has been installed, and rightly so, because otherwise it would never
+// start its own system.
+//
+// So this arms one blade for one netboot: the tag goes on, the blade is told
+// to restart, it comes up in the mini OS, says what it is, and the tag comes
+// off again. The mini OS then finds a system on the disk, nothing to do, and
+// restarts into it by itself after a minute — which is also long enough for
+// the tag to have gone. Two restarts, and nothing is written.
+//
+// probeFor is how long the arming lasts. A blade that does not come back in
+// that time — because it is off, or because somebody unplugged it — must not
+// stay armed for ever: the next time it starts it would land in the installer
+// for no reason anybody remembers.
+const probeFor = 30 * time.Minute
+
+func (a *App) requestProbe(serial string) error {
+	b, err := a.getBlade(serial)
+	if err != nil {
+		return me("err.nosuchblade")
+	}
+	// A blade that is about to be written comes up in the mini OS anyway, and
+	// arming it on top would only be a second reason for the same thing.
+	if b.InstallState == installPending || b.InstallState == installWipe {
+		return me("err.probebusy")
+	}
+	if _, err := a.db.Exec(`UPDATE blades SET probe=? WHERE serial=?`, now(), serial); err != nil {
+		return err
+	}
+	// The tag has to be on the wire before the blade asks for an address.
+	_, _ = a.syncDHCP()
+	if err := a.queueCommand(serial, "reboot"); err != nil {
+		return err
+	}
+	a.logEvent(serial, "info", "firmware read requested — this blade restarts into the mini OS once")
+	return nil
+}
+
+// probeArmed says whether the arming still stands. Deliberately a reading of
+// the clock rather than a row that gets tidied up: a stale arming that nobody
+// notices is exactly the thing that would send a blade into the installer
+// weeks later.
+func probeArmed(b *Blade) bool {
+	if b.Probe == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, b.Probe)
+	return err == nil && time.Since(t) < probeFor
+}
+
+// clearProbe is called when the blade has answered — it has said what it is,
+// and the next start belongs to its own system again.
+func (a *App) clearProbe(serial string) {
+	_, _ = a.db.Exec(`UPDATE blades SET probe='' WHERE serial=?`, serial)
+	_, _ = a.syncDHCP()
+}
+
 // requestInstall records that this blade should be written on its next
 // netboot. That is a deliberate act — merely assigning an image triggers
 // nothing.
@@ -1075,14 +1141,14 @@ func (a *App) settingInt(key string, def int) int {
 // ── Blades ───────────────────────────────────────────────────────────
 
 const bladeCols = `serial,short_serial,rack_id,slot,hostname,mac,image,variant,state,
-	groups_json,facts_json,health_json,install_state,installed_at,config_applied,last_seen,created`
+	groups_json,facts_json,health_json,install_state,installed_at,config_applied,last_seen,created,probe`
 
 func (a *App) scanBlade(sc interface{ Scan(...any) error }) (*Blade, error) {
 	var b Blade
 	var groups, facts, health string
 	err := sc.Scan(&b.Serial, &b.ShortSerial, &b.RackID, &b.Slot, &b.Hostname, &b.MAC,
 		&b.Image, &b.Variant, &b.State, &groups, &facts, &health,
-		&b.InstallState, &b.InstalledAt, &b.ConfigApp, &b.LastSeen, &b.Created)
+		&b.InstallState, &b.InstalledAt, &b.ConfigApp, &b.LastSeen, &b.Created, &b.Probe)
 	if err != nil {
 		return nil, err
 	}

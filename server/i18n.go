@@ -329,6 +329,23 @@ var catalog = map[string]map[Lang]string{
 	"err.stillslotted": {
 		LangEN: "this blade sits in %s. Take it out of the slot first — that is a separate act, with its own consequences.",
 		LangDE: "Dieses Blade steckt in %s. Nimm es erst aus dem Steckplatz — das ist ein eigener Vorgang mit eigenen Folgen."},
+	"err.nosuchblade": {
+		LangEN: "no such blade",
+		LangDE: "Dieses Blade gibt es nicht"},
+	"err.probebusy": {
+		LangEN: "this blade is already set to come up in the mini OS — an installation is armed for it",
+		LangDE: "Dieses Blade startet ohnehin schon ins Mini-OS — für es ist eine Installation scharf"},
+	"act.probe": {LangEN: "Read the firmware", LangDE: "Firmware auslesen"},
+	"act.probetip": {
+		LangEN: "Restarts this blade into the mini OS once, which reads what only the firmware knows — the boot order among it — and then restarts into its own system. Nothing is written.",
+		LangDE: "Startet dieses Blade einmal ins Mini-OS, das ausliest, was nur die Firmware weiß — die Bootreihenfolge unter anderem — und startet danach wieder in sein eigenes System. Geschrieben wird nichts."},
+	"act.probeask": {
+		LangEN: "Restart %s twice to read its firmware?",
+		LangDE: "%s zweimal neu starten, um die Firmware auszulesen?"},
+	"msg.probing": {
+		LangEN: "%s restarts into the mini OS and reports what its firmware says",
+		LangDE: "%s startet ins Mini-OS und meldet, was seine Firmware sagt"},
+	"blade.probing": {LangEN: "reading the firmware", LangDE: "liest die Firmware"},
 	"err.nothingtocancel": {
 		LangEN: "no installation is armed for this blade",
 		LangDE: "Für dieses Blade ist keine Installation scharf"},

@@ -137,6 +137,26 @@ func bootModeName(m uint32) string {
 	return fmt.Sprintf("mode %d", m)
 }
 
+// findTool finds a program without depending on PATH. The mini OS is started
+// by the kernel as /init, and the kernel hands it almost no environment at
+// all — no PATH, so exec.LookPath finds nothing and every reading that needs a
+// program comes back empty. Which is what happened: the boot order and the
+// VideoCore version were missing from every blade that had only ever been in
+// the installer, and nothing said why.
+func findTool(name string) string {
+	for _, dir := range []string{"/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/opt/vc/bin"} {
+		p := dir + "/" + name
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	// And where it is somewhere else entirely, the environment may still say.
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	return ""
+}
+
 // bootOrder reads the order the bootloader tries devices in. It decides
 // whether a blade starts at all: an image written to the eMMC of a module
 // whose order names only the network and an NVMe boots from nowhere, and the
@@ -152,8 +172,8 @@ func bootOrder() string {
 		{"vcgencmd", "bootloader_config"},
 		{"rpi-eeprom-config"},
 	} {
-		path, err := exec.LookPath(argv[0])
-		if err != nil {
+		path := findTool(argv[0])
+		if path == "" {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -203,8 +223,8 @@ func parseBootOrder(s string) string {
 // piece here that runs a program, because there is no file that holds it, and
 // it is skipped where the tool is not installed — Debian ships without it.
 func vcgencmdVersion() string {
-	path, err := exec.LookPath("vcgencmd")
-	if err != nil {
+	path := findTool("vcgencmd")
+	if path == "" {
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

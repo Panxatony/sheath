@@ -888,6 +888,21 @@ ramdisk, removes the imager along with Qt, the QML plugins, the graphics
 drivers, maps, icons and fonts (57 MB a headless blade has no use for), and
 puts `installer/init` and the freshly built installer in.
 
+**Reading the firmware of a blade that is already running.** The boot order
+lives in the EEPROM, and a running system often cannot reach it: an upstream
+kernel builds no mailbox device, so `/dev/vcio_gencmd` does not exist and
+`vcgencmd` — where the distribution ships it at all — has nothing to talk to.
+The mini OS can, on every netboot; but a blade in a slot is not offered netboot
+once it is installed, and rightly so, or it would never start its own system.
+
+So there is **Read the firmware** on the blade: it arms that one blade for one
+netboot, tells it to restart, and takes the tag off again the moment the mini
+OS reports what it found. The mini OS then sees a system on the disk, nothing
+to do, and restarts into it by itself after a minute — which is also long
+enough for the tag to have gone. Two restarts, nothing written. An arming that
+is not taken up within thirty minutes expires, so a blade that was switched off
+does not land in the installer weeks later.
+
 One thing goes the other way: `vcgencmd` from `raspi-utils-core`, pinned by
 checksum like everything else here. The network installer does not carry it,
 and it is the only way to read a module's `BOOT_ORDER` — that number lives in

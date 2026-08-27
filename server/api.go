@@ -241,7 +241,9 @@ func (a *App) siteDesired(id int64) (*SiteDesired, error) {
 			// The server's own syncDHCP is inert wherever a site owns the
 			// wire, so this flag is the only thing that arms anything — a
 			// lesson from an erase that was requested and never happened.
-			Netboot:       b.InstallState == installPending || b.InstallState == installWipe,
+			// A firmware reading arms it too: it is the same request of the
+			// blade — come up in the mini OS once — for a different reason.
+			Netboot:       b.InstallState == installPending || b.InstallState == installWipe || probeArmed(&b),
 			Image:         b.Image,
 			Token:         tok,
 			Config:        cfg,
@@ -709,9 +711,9 @@ func (a *App) hBladeDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 	serial, kind := r.PathValue("serial"), r.PathValue("kind")
 	switch kind {
-	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel", "probe":
 	default:
-		fail(w, 400, "unknown action %q (identify|identify_off|stealth_on|stealth_off|reboot|reimage|cancel)", kind)
+		fail(w, 400, "unknown action %q (identify|identify_off|stealth_on|stealth_off|reboot|reimage|cancel|probe)", kind)
 		return
 	}
 	if _, err := a.getBlade(serial); err != nil {
@@ -726,6 +728,16 @@ func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 	}
 	// Calling one off is a change here and nothing for the blade to do: it
 	// has not started yet, and the point is that it never will.
+	// Arming is a change here and a restart there, so it queues its own
+	// command rather than falling through to the generic one below.
+	if kind == "probe" {
+		if err := a.requestProbe(serial); err != nil {
+			fail(w, 409, "%v", err)
+			return
+		}
+		writeJSON(w, 202, map[string]string{"probing": serial})
+		return
+	}
 	if kind == "cancel" {
 		if err := a.cancelInstall(serial); err != nil {
 			fail(w, 409, "%v", err)
@@ -963,6 +975,18 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 	if len(in.Hardware) > 0 {
 		a.mergeFacts(serial, in.Hardware)
 		b, _ = a.getBlade(serial)
+		// This is what a firmware reading was armed for: the blade has come
+		// up in the mini OS and said what it is. Disarm now, so the tag is
+		// gone by the time it restarts into its own system a minute later.
+		if b.Probe != "" {
+			what := "firmware read"
+			if o, ok := in.Hardware["boot_order"].(string); ok && o != "" {
+				what += ": boot order " + o
+			}
+			a.clearProbe(serial)
+			a.logEvent(serial, "info", what)
+			b, _ = a.getBlade(serial)
+		}
 	}
 
 	// Link the session to the serial number and adopt an image choice already

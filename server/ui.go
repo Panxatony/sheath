@@ -1110,9 +1110,17 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch kind {
-	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel", "probe":
 	default:
 		redirectMsg(w, r, to, "err", T(l, "err.unknownact"))
+		return
+	}
+	if kind == "probe" {
+		if err := a.requestProbe(serial); err != nil {
+			redirectMsg(w, r, to, "err", errText(l, err))
+			return
+		}
+		redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "msg.probing"), bladeName(b)))
 		return
 	}
 	if kind == "cancel" {
@@ -1217,6 +1225,12 @@ func (a *App) rowStatus(b *Blade, lvl healthLevel) (key, led, arg string) {
 		case stageInstaller, stageRamdisk:
 			return "st.installer", "id", ""
 		}
+	}
+	// Armed to come up in the mini OS once so its firmware can be read. It is
+	// a state somebody switched on and will want to see the end of, and while
+	// it stands the blade is about to restart twice.
+	if probeArmed(b) {
+		return "blade.probing", "id", ""
 	}
 	switch {
 	case b.State == "provisioning":
@@ -2164,6 +2178,11 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   {{end}}
                   <form method="post" action="/blades/{{.Serial}}/unassign">
                     <button class="mini danger" type="submit">{{t $top.L "act.remove"}}</button></form>
+                </div>
+                <div class="menu-row">
+                  <form method="post" action="/blades/{{.Serial}}/actions/probe"
+                        onsubmit="return confirm('{{printf (t $top.L "act.probeask") (or .Hostname .Serial)}}')">
+                    <button class="mini ghost" type="submit" title="{{t $top.L "act.probetip"}}">{{t $top.L "act.probe"}}</button></form>
                 </div>
                 <div class="menu-sep"></div>
                 <div class="hw">

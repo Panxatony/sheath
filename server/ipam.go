@@ -327,6 +327,9 @@ func (a *App) syncDHCP() (*syncResult, error) {
 		case installWipe:
 			tag, why = "set:bootnet,", "erase requested – boots over the network"
 		}
+		if tag == "" && probeArmed(&b) {
+			tag, why = "set:bootnet,", "firmware read requested – boots over the network once"
+		}
 		body := fmt.Sprintf(
 			"# Sheath – generated, do not edit by hand\n"+
 				"# Blade %s  Rack %s  Slot %d\n"+
