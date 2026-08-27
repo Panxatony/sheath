@@ -482,6 +482,24 @@ the history of a module every time somebody picks it up, and the history is the
 reason the inventory is worth keeping. `TestBladeKeepsItselfWhenItMovesBetweenSites`
 holds this in place.
 
+### What a site owns on the wire
+
+The reservations were always the site's. Two more things became the site's
+because they were pretending not to be:
+
+- **The address pool and the lease time.** Both were fields on the site page,
+  and both were ignored: the numbers dnsmasq served came from a variable in an
+  Ansible inventory. The site writes that part of the configuration itself now
+  — range, lease, gateway, resolver, domain — checks it with `dnsmasq --test`
+  and restarts dnsmasq, because SIGHUP re-reads host records and never the
+  configuration.
+- **The address its blades report to.** Only the site knows the address its
+  own blades can reach, so it tells the centre in its heartbeat; the centre
+  puts it into the configuration of the blades standing there, and the relay
+  writes it into the seed as the installer places it. A blade already carrying
+  the wrong address moves itself, but only to one that answers a health check
+  first.
+
 ### Still open
 
 

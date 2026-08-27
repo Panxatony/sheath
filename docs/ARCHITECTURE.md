@@ -78,6 +78,7 @@ without a netboot installer, multi-distro would be ten times the manual work; wi
 | Fan unit port | `GPIO12/13` = PWM0/1 or UART5 | Smart Fan Unit (RP2040 + EMC2101): RPM, exhaust temperature |
 | PoE indicator | `GPIO23` | Part of the health model |
 | EEPROM `BOOT_ORDER` | nibbles read from right to left | `0xf162` = network → NVMe → SD/eMMC → loop. **CM4 factory: `0xf641`** |
+| Install target | NVMe, eMMC or a card | Chosen per blade from the devices it reported; the default is the NVMe where there is one and the single device where there is only one |
 
 **Important:** the digits are read from the right, so `0xf26` means: try the NVMe first, fall through to netboot if the NVMe is
 empty, otherwise start over. A fresh NVMe therefore ends up at the installer **by itself** —

@@ -517,6 +517,30 @@ d8:3a:dd:xx:xx:xx,blade-r1s01,10.0.0.101,infinite
 > `systemctl reload dnsmasq` after every change. Skip the reload and the old
 > netboot state stays in effect.
 
+**Two files, and who owns which.** The one the playbook lays down holds what
+never changes: the interface, the netboot switch, the TFTP root, the logging.
+The second — `/etc/dnsmasq.d/sheath-range.conf` — is written by `sheath-site`
+from the site record on every pass, and holds what somebody may want to change
+from the interface:
+
+```ini
+dhcp-range=10.0.0.210,10.0.0.240,255.255.255.0,1h
+dhcp-option=option:router,10.0.0.1
+dhcp-option=option:dns-server,10.0.0.10
+dhcp-option=option:domain-name,blades.lan
+domain=blades.lan
+local=/blades.lan/
+```
+
+Pool, lease time, gateway, resolver and domain therefore live in one place —
+the site's page — and reach the wire on the next pass. Before this they were
+Ansible variables, and moving the pool in the interface moved nothing at all.
+
+The site checks the file with `dnsmasq --test` before putting it in place and
+then **restarts** dnsmasq. A reload would not do: SIGHUP makes dnsmasq re-read
+its host records and never its configuration, so a changed range would look
+applied and would not be.
+
 ### 3.7 The `sheath-site` unit
 
 The unit ships in the repository at `site/sheath-site.service`. Install it as it

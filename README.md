@@ -44,10 +44,11 @@ addresses and serial numbers in them belong to nothing.
 
 | Pillar | |
 |---|---|
-| **Provision** | Netboot into a mini OS that writes the assigned image to the NVMe |
+| **Provision** | Netboot into a mini OS that writes the assigned image to the NVMe, the eMMC or a card |
 | **Configure** | The agent pulls its desired state every 60 s and applies it idempotently |
 | **Address** | DHCP reservations from the inventory; netboot switchable per blade |
-| **Monitor** | Temperatures, fan, throttling, disk usage — seen from inside and outside |
+| **Monitor** | Temperatures, fan, throttling, disk usage — seen from inside and outside, and said out loud by mail when a blade stays unwell |
+| **Account** | What is in the racks: module and revision, memory, storage, firmware — read by the mini OS before an image is even chosen |
 | **Reinstall** | Assign a different image, request installation, restart the blade |
 
 Several distributions run side by side: the distribution is an attribute of the
@@ -61,13 +62,45 @@ site/        Go, one per site: DHCP reservations,        → /usr/local/bin/shea
              netboot detection, image cache, relay
 agent/       Go, runs on every blade                     → /usr/local/bin/sheath-agent
 installer/   Go, runs in the mini OS during netboot      → inside boot.img
-tools/       mirror, prepare and publish images; build the netboot payload
+tools/       mirror and prepare images; build the mini OS and the netboot payload
+deploy/      Ansible: the centre and the sites, from a release or a local build
 assets/      Mark (SVG)
 docs/        architecture, installation, screenshots
 ```
 
-Alongside those: `docs/ARCHITECTURE.md` (why it is built this way) and `docs/INSTALLATION.md`
-(how to install it on the metal, including the traps that went off along the way).
+Alongside those: `docs/ARCHITECTURE.md` (why it is built this way),
+`docs/ARCHITECTURE-SITES.md` (what a site is and what it may decide alone) and
+`docs/INSTALLATION.md` (how to install it on the metal, including the traps
+that went off along the way).
+
+## More than one site
+
+A site is one broadcast domain with a machine in it. `sheath-site` runs there
+and is the only thing the blades of that site talk to: it writes the DHCP
+reservations, holds the images and the payload, and answers its blades from
+that cache while the centre is unreachable. The centre keeps the inventory and
+the decisions and never touches a wire.
+
+A new site signs itself in with a one-time code from the interface — the token
+is written on the site machine and never travels through a terminal history:
+
+```sh
+sheath-site --server http://sheath-server:8080 --enroll ABCD-EFGH-JKLM
+```
+
+## Deploying
+
+```sh
+cd deploy
+cp inventory.example.ini inventory.ini      # and edit it
+ansible-playbook site.yml --check --diff    # look first
+ansible-playbook site.yml -e sheath_version=v0.8.2-alpha
+```
+
+Two roles, one for the centre and one for a site. Binaries come from a release
+or, with `sheath_local_bin_dir`, from a build of your own. DHCP is off unless
+you ask for it: a second DHCP server in a segment that already has one is an
+outage rather than a setting.
 
 ## Building
 
@@ -80,6 +113,11 @@ cd installer && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o sheath-inst
 
 All static, no runtime dependencies; arm64 for the blades, and the two server
 parts build for amd64 as well. The agent needs 1 MB of memory.
+
+The netboot payload is built rather than kept: `tools/build-minios.sh` takes
+the Raspberry Pi network installer — pinned by checksum — strips what only a
+screen needs, and puts the Sheath installer in the imager's place;
+`tools/build-bootimg.sh` packs that into the `boot.img` the blades load.
 
 The server binary is `sheathd`, not `sheath` — the plain name is kept free for
 a command-line client.
