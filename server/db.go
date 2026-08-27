@@ -877,6 +877,28 @@ func (a *App) finishWipe(serial string) error {
 	return err
 }
 
+// cancelInstall calls off a requested installation or erase. Arming one is a
+// deliberate act and so is changing your mind: until now the only way back
+// was for the blade to boot and carry it out, which also meant a blade could
+// not be removed while somebody had armed it by accident.
+//
+// Nothing is undone on the blade, because nothing has happened there yet —
+// the netboot tag comes out of the reservation, and the next start boots
+// whatever is already on the disk.
+func (a *App) cancelInstall(serial string) error {
+	res, err := a.db.Exec(`UPDATE blades SET install_state=? WHERE serial=? AND install_state IN (?,?)`,
+		installIdle, serial, installPending, installWipe)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return me("err.nothingtocancel")
+	}
+	_, _ = a.syncDHCP()
+	a.logEvent(serial, "info", "installation called off")
+	return nil
+}
+
 // requestInstall records that this blade should be written on its next
 // netboot. That is a deliberate act — merely assigning an image triggers
 // nothing.

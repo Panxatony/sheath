@@ -706,9 +706,9 @@ func (a *App) hBladeDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 	serial, kind := r.PathValue("serial"), r.PathValue("kind")
 	switch kind {
-	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel":
 	default:
-		fail(w, 400, "unknown action %q (identify|identify_off|stealth_on|stealth_off|reboot|reimage)", kind)
+		fail(w, 400, "unknown action %q (identify|identify_off|stealth_on|stealth_off|reboot|reimage|cancel)", kind)
 		return
 	}
 	if _, err := a.getBlade(serial); err != nil {
@@ -720,6 +720,16 @@ func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "%v", err)
 			return
 		}
+	}
+	// Calling one off is a change here and nothing for the blade to do: it
+	// has not started yet, and the point is that it never will.
+	if kind == "cancel" {
+		if err := a.cancelInstall(serial); err != nil {
+			fail(w, 409, "%v", err)
+			return
+		}
+		writeJSON(w, 200, map[string]string{"cancelled": serial})
+		return
 	}
 	if err := a.queueCommand(serial, kind); err != nil {
 		fail(w, 500, "%v", err)

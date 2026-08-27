@@ -322,6 +322,12 @@ var catalog = map[string]map[Lang]string{
 	"err.stillslotted": {
 		LangEN: "this blade sits in %s. Take it out of the slot first — that is a separate act, with its own consequences.",
 		LangDE: "Dieses Blade steckt in %s. Nimm es erst aus dem Steckplatz — das ist ein eigener Vorgang mit eigenen Folgen."},
+	"err.nothingtocancel": {
+		LangEN: "no installation is armed for this blade",
+		LangDE: "Für dieses Blade ist keine Installation scharf"},
+	"act.cancel":    {LangEN: "Call it off", LangDE: "Abbestellen"},
+	"act.canceltip": {LangEN: "Take the netboot tag out again — nothing has been written yet", LangDE: "Nimmt die Netboot-Markierung wieder heraus — geschrieben ist noch nichts"},
+	"msg.cancelled": {LangEN: "installation for %s called off", LangDE: "Installation für %s abbestellt"},
 	"err.busyinstall": {
 		LangEN: "an installation is under way on this blade",
 		LangDE: "Auf diesem Blade läuft gerade eine Installation"},

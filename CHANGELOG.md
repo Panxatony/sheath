@@ -6,6 +6,14 @@ on `main`.
 ## Unreleased
 
 ### Added
+- An armed installation or erase can be **called off**. Arming one is a
+  deliberate act and so is changing your mind; until now the only way back was
+  to let the blade boot and carry it out. It also meant a blade could not be
+  removed while somebody had armed it by mistake. Nothing is undone on the
+  blade, because nothing has happened there yet: the netboot tag comes out of
+  the reservation and the next start boots what is already on the disk.
+- A blade sitting in the mini OS says so — "in the installer" rather than "no
+  agent yet", which is what a record nobody has ever heard from says.
 - The inventory says what state each blade is in — the same wording the slot
   rows use, from "in sync" to "writing 60 %" — and which address it actually
   holds, with the address it was given beside it where the two differ. A blade

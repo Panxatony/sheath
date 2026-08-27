@@ -17,6 +17,7 @@ import (
 // ── Views ────────────────────────────────────────────────────────────
 
 type slotView struct {
+	Armed    bool  // an installation or erase waits for the next netboot
 	SiteID   int64 // for a blade with no slot: the site that last saw it
 	SiteName string
 	Devices  []installDevice // what this blade says it has to install onto
@@ -215,6 +216,7 @@ func (a *App) buildRackView(rk Rack, blades []Blade, l Lang) rackView {
 			Devices: a.installDevices(&b), Target: a.installTarget(&b),
 			Slot: s, Serial: b.Serial, Hostname: b.Hostname, IP: b.IP, MAC: b.MAC,
 			Image: b.Image, State: b.State, Ago: ago(l, b.LastSeen),
+			Armed:   b.InstallState == installPending || b.InstallState == installWipe,
 			Install: T(l, "inst."+installOr(b.InstallState)),
 			InstLED: instLED(b.InstallState),
 			Health:  joinErr(l, reasons),
@@ -1107,9 +1109,21 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch kind {
-	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel":
 	default:
 		redirectMsg(w, r, to, "err", T(l, "err.unknownact"))
+		return
+	}
+	if kind == "cancel" {
+		if err := a.cancelInstall(serial); err != nil {
+			redirectMsg(w, r, to, "err", errText(l, err))
+			return
+		}
+		name := b.Hostname
+		if name == "" {
+			name = serial
+		}
+		redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "msg.cancelled"), name))
 		return
 	}
 	if kind == "reimage" {
@@ -2135,8 +2149,13 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   {{end}}
                 </div>
                 <div class="menu-row">
+                  {{if .Armed}}
+                  <form method="post" action="/blades/{{.Serial}}/actions/cancel">
+                    <button class="mini" type="submit" title="{{t $top.L "act.canceltip"}}">{{t $top.L "act.cancel"}}</button></form>
+                  {{else}}
                   <form method="post" action="/blades/{{.Serial}}/actions/reimage">
                     <button class="mini" type="submit" title="{{t $top.L "act.installtip"}}">{{t $top.L "act.install"}}</button></form>
+                  {{end}}
                   <form method="post" action="/blades/{{.Serial}}/unassign">
                     <button class="mini danger" type="submit">{{t $top.L "act.remove"}}</button></form>
                 </div>
