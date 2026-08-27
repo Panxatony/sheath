@@ -820,6 +820,29 @@ On failure the blade stops with a message instead of dropping into a boot loop.
 `debugconsole` in `cmdline.txt` keeps a getty alongside, so you can get a shell
 without pulling the blade.
 
+**Where it is built.** On the centre, and nowhere else. `tools/build-bootimg.sh`
+writes into the centre's TFTP root, and the sites fetch from there, checksums
+and all — so the machine that owns the payload is the machine that states what
+it is. It ran on a site machine once, and the copy that reached the centre was
+whatever somebody last carried over; the second site then served a payload
+missing the one file the bootloader reads first.
+
+The firmware inside it comes from a pinned revision of the Raspberry Pi
+firmware repository rather than from a directory somebody populated once:
+
+```sh
+sudo tools/fetch-firmware.sh /srv/sheath/build     # start4.elf, fixup4.dat, the CM4 device trees
+FIRMWARE_REF=1.20250430 sudo tools/fetch-firmware.sh
+```
+
+The revision used is recorded in `build/.firmware-ref`. Changing it changes
+what a blade boots, so rebuild and then actually netboot one — the payload is
+the one piece where "it built fine" says nothing.
+
+What is still built by hand is the mini OS itself: `build/Image.gz` and the
+ramdisk skeleton in `build/rootfs`. They are copied from machine to machine and
+have no recipe yet.
+
 ### 3.10 The backup
 
 The database holds the admin token, the token of every site, the token of

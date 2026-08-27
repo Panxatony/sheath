@@ -35,6 +35,7 @@ type config struct {
 	Dnsmasq   string
 	LogFile   string
 	ImagesDir string
+	AgentDir  string
 	TFTPDir   string
 	StateDir  string
 	RelayURL  string
@@ -49,10 +50,12 @@ func main() {
 		hostsDir  = flag.String("dhcp-hosts", "/etc/sheath/dhcp-hosts", "dnsmasq dhcp-hostsdir")
 		logFile   = flag.String("dnsmasq-log", "/srv/sheath/logs/dnsmasq.log", "dnsmasq log to watch")
 		imagesDir = flag.String("images", "/srv/sheath/images", "where images are cached")
-		tftpDir   = flag.String("tftp", "/srv/sheath/tftp", "TFTP root")
-		stateDir  = flag.String("state", "/var/lib/sheath-site", "where the last desired state is kept")
-		interval  = flag.Duration("interval", 30*time.Second, "interval between two passes")
-		listen    = flag.String("listen", ":8081",
+		agentDir  = flag.String("agent", "/srv/sheath/agent",
+			"where the binaries blades install are cached")
+		tftpDir  = flag.String("tftp", "/srv/sheath/tftp", "TFTP root")
+		stateDir = flag.String("state", "/var/lib/sheath-site", "where the last desired state is kept")
+		interval = flag.Duration("interval", 30*time.Second, "interval between two passes")
+		listen   = flag.String("listen", ":8081",
 			"address for the blade relay; empty turns the relay off")
 		relayURL = flag.String("relay-url", "",
 			"URL blades at this site should use, e.g. http://10.0.0.10:8081 — "+
@@ -101,6 +104,7 @@ func main() {
 		HostsDir:  *hostsDir,
 		LogFile:   *logFile,
 		ImagesDir: *imagesDir,
+		AgentDir:  *agentDir,
 		TFTPDir:   *tftpDir,
 		StateDir:  *stateDir,
 		RelayURL:  strings.TrimRight(*relayURL, "/"),

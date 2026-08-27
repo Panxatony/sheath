@@ -182,6 +182,9 @@ func (s *site) pass() error {
 	if err := s.ensureImages(d); err != nil {
 		log.Printf("images: %v", err)
 	}
+	if err := s.ensureBinaries(d); err != nil {
+		log.Printf("binaries: %v", err)
+	}
 	s.flush()
 	if s.online && s.relay != nil {
 		s.relay.drain()

@@ -7,7 +7,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -322,4 +324,100 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// ── Binaries ─────────────────────────────────────────────────────────
+
+// ensureBinaries keeps the programs a blade installs — the agent, the
+// compute-blade agent, bladectl — on this machine.
+//
+// They used to be fetched from whatever absolute address the centre wrote in
+// the configuration, which is one site's address: blades at every other site
+// reached across the link for a file that was going to be identical, and a
+// site whose link was down could not configure its own blades at all. That is
+// the one thing the split was supposed to prevent.
+//
+// The bytes are named by checksum, so a cached copy is either the right file
+// or not the file at all.
+func (s *site) ensureBinaries(d *desired) error {
+	if s.dry {
+		return nil
+	}
+	want := map[string]string{} // file name → sha256
+	src := map[string]string{}  // file name → where to fetch it
+	for _, b := range d.Blades {
+		for _, spec := range binariesIn(b.Config) {
+			name := path.Base(spec.URL)
+			if name == "" || name == "." || strings.Contains(name, "..") {
+				continue
+			}
+			want[name], src[name] = spec.SHA256, fromCentre(spec.URL, d.Boot.ServerURL)
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(s.cfg.AgentDir, 0o755); err != nil {
+		return err
+	}
+	for name, sum := range want {
+		dest := filepath.Join(s.cfg.AgentDir, name)
+		if ok, err := s.haveImage(dest, sum, 0); err == nil && ok {
+			continue
+		}
+		log.Printf("binary %s: fetching", name)
+		if err := s.fetchImage(src[name], dest, sum); err != nil {
+			s.note("", "warn", "binary "+name+" not fetched: "+err.Error())
+			continue
+		}
+		s.note("", "info", "binary "+name+" is here")
+	}
+	return nil
+}
+
+// fromCentre resolves a binary address against the centre rather than taking
+// it as written. What is written is whatever somebody put in the
+// configuration, and that is one site's address — a second site then fetches
+// from the first, gets whatever that one happens to hold, and fails on the
+// checksum when it is stale. Which is what happened: the same fault the
+// blades had, one level up.
+//
+// Anything the centre serves under /agent/ is fetched from the centre. An
+// address pointing somewhere else entirely is left alone: that is a download
+// somebody meant.
+func fromCentre(raw, centre string) string {
+	if centre == "" {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || !strings.HasPrefix(u.Path, "/agent/") {
+		return raw
+	}
+	return strings.TrimRight(centre, "/") + u.Path
+}
+
+// binariesIn pulls the binary list out of one blade's configuration. The
+// document is whatever the centre says it is, so every step is checked rather
+// than asserted.
+type binSpec struct{ URL, SHA256 string }
+
+func binariesIn(cfg map[string]any) []binSpec {
+	arr, ok := cfg["binaries"].([]any)
+	if !ok {
+		return nil
+	}
+	var out []binSpec
+	for _, e := range arr {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		u, _ := m["url"].(string)
+		if u == "" {
+			continue
+		}
+		sum, _ := m["sha256"].(string)
+		out = append(out, binSpec{URL: u, SHA256: sum})
+	}
+	return out
 }

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -89,7 +90,7 @@ func (r *relay) routes() *http.ServeMux {
 
 	// Bytes the site holds anyway.
 	mux.HandleFunc("GET /images/", r.serveLocal(r.s.cfg.ImagesDir, "/images/"))
-	mux.HandleFunc("GET /agent/", r.passThrough)
+	mux.HandleFunc("GET /agent/", r.serveLocal(r.s.cfg.AgentDir, "/agent/"))
 	mux.HandleFunc("GET /boot/", r.serveLocal(r.s.cfg.TFTPDir, "/boot/"))
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, req *http.Request) {
@@ -259,7 +260,7 @@ func (r *relay) provisionStatus(w http.ResponseWriter, req *http.Request) {
 func (r *relay) bladeConfig(w http.ResponseWriter, req *http.Request) {
 	if resp, err := r.forward(req, nil); err == nil {
 		defer resp.Body.Close()
-		copyResponse(w, resp)
+		r.answerWithLocalBinaries(w, resp, req)
 		return
 	}
 	serial := req.PathValue("serial")
@@ -277,7 +278,11 @@ func (r *relay) bladeConfig(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"version": b.ConfigVersion, "config": b.Config})
+	cfg := b.Config
+	if aimed, changed := r.aimBinariesHere(cfg, req); changed {
+		cfg = aimed
+	}
+	writeJSON(w, 200, map[string]any{"version": b.ConfigVersion, "config": cfg})
 }
 
 // commands cannot be invented. A command is something a person asked for, and
@@ -410,6 +415,92 @@ func (r *relay) serveLocal(dir, prefix string) http.HandlerFunc {
 		}
 		r.passThrough(w, req)
 	}
+}
+
+// answerWithLocalBinaries hands the configuration on with the binary
+// addresses pointing here, where the bytes are, instead of at whichever site
+// the centre happened to name.
+func (r *relay) answerWithLocalBinaries(w http.ResponseWriter, resp *http.Response, req *http.Request) {
+	if resp.StatusCode != 200 {
+		copyResponse(w, resp)
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		copyResponse(w, resp)
+		return
+	}
+	var doc map[string]any
+	if json.Unmarshal(raw, &doc) == nil {
+		if cfg, ok := doc["config"].(map[string]any); ok {
+			if aimed, changed := r.aimBinariesHere(cfg, req); changed {
+				doc["config"] = aimed
+				if out, merr := json.Marshal(doc); merr == nil {
+					raw = out
+				}
+			}
+		}
+	}
+	for k, vs := range resp.Header {
+		if k == "Content-Length" {
+			continue
+		}
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(raw)
+}
+
+// aimBinariesHere rewrites the address of every binary this site actually
+// holds. Only those: a URL pointing at a file we do not have would turn a
+// working fetch from far away into a 404 next door.
+func (r *relay) aimBinariesHere(cfg map[string]any, req *http.Request) (map[string]any, bool) {
+	arr, ok := cfg["binaries"].([]any)
+	if !ok || len(arr) == 0 {
+		return cfg, false
+	}
+	self := r.selfURL(req)
+	changed := false
+	out := make([]any, 0, len(arr))
+	for _, e := range arr {
+		m, ok := e.(map[string]any)
+		if !ok {
+			out = append(out, e)
+			continue
+		}
+		u, _ := m["url"].(string)
+		name := path.Base(u)
+		if u == "" || name == "" || name == "." || strings.Contains(name, "..") {
+			out = append(out, e)
+			continue
+		}
+		local := filepath.Join(r.s.cfg.AgentDir, name)
+		if _, err := os.Stat(local); err != nil {
+			out = append(out, e)
+			continue
+		}
+		copyM := make(map[string]any, len(m))
+		for k, v := range m {
+			copyM[k] = v
+		}
+		copyM["url"] = self + "/agent/" + name
+		out = append(out, copyM)
+		changed = true
+	}
+	if !changed {
+		return cfg, false
+	}
+	// A copy, because the cached desired state is shared with the pull loop
+	// and rewriting it in place would make the site's own record disagree
+	// with what the centre said.
+	cp := make(map[string]any, len(cfg))
+	for k, v := range cfg {
+		cp[k] = v
+	}
+	cp["binaries"] = out
+	return cp, true
 }
 
 func (r *relay) authorised(req *http.Request, token string) bool {

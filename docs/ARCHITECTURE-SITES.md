@@ -467,40 +467,29 @@ longer be changed later.
 
 ---
 
-## 10. Open points
+## 10. Decided, and open
 
-- **Bootstrapping a site.** A new site gets its token by an operator calling
-  `POST /api/v1/sites/{id}/token` and copying the value into
-  `/etc/sheath-site/token` by hand. There is no enrolment code and no UI route
-  for it. The intended shape is the one blade enrollment already has: a one-time
-  code from the interface, the same pattern once again.
+### A blade belongs to its module, not to a site
+
+Carry a blade from one site to another and it is the same blade: the serial is
+the identity, the record stays, and everything ever written about it stays
+readable. What changes is what the position decides — the address, derived from
+(site, BladeRunner, slot), and the name, which takes the new site's prefix.
+Nothing is retired and nothing is enrolled again.
+
+The alternative — a new record at the new site — was rejected because it ends
+the history of a module every time somebody picks it up, and the history is the
+reason the inventory is worth keeping. `TestBladeKeepsItselfWhenItMovesBetweenSites`
+holds this in place.
+
+### Still open
+
 
 - **Clock skew is measured and not used.** The site reports its clock in every
   heartbeat, and the centre logs the offset when it exceeds a minute. Commands
   expire after fifteen minutes on both sides — but that expiry is still computed
   against the centre's own clock. Either mandatory NTP at the site, or subtract
   the reported offset where commands expire. Today it is a note in the log.
-
-- **A blade moves between sites.** The serial number stays, the address and the
-  name change. Moving a whole BladeRunner works and renumbers its blades; a
-  single blade moving from one site to another is not modelled, and it is still
-  unresolved whether that is a move or a new blade.
-
-- **The relay's report queue lives only in memory.** Up to 5000 buffered blade
-  reports, oldest half dropped on overflow — but a restart of `sheath-site`
-  loses them all. The desired state survives a restart because it is on disk;
-  the reports do not. That is the wrong way round for the one program whose
-  purpose is surviving an outage, and it wants the same treatment: a file, not
-  a slice. The site's own observations (`note`, and the stages read out of the
-  dnsmasq log) have the same problem, and the stage queue additionally has no
-  size cap at all.
-
-- **The boot payload still names the centre.** A site fetches `boot.img` from
-  `GET /boot/` and puts it in its TFTP root, but the `cmdline.txt` that carries
-  `sheath_server=` lives *inside* that image, so a blade booting it is pointed at
-  whatever address the centre built in. The desired state already carries a
-  `cmdline_url` and a `server_url` for this; nothing reads them yet. Until a site
-  can write its own `cmdline.txt`, a per-site payload is a manual build.
 
 - **Two sites, the same network.** Allowed and common, and the model handles it:
   the block uniqueness is per site and a netboot session records which site saw

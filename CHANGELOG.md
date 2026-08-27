@@ -5,6 +5,29 @@ on `main`.
 
 ## Unreleased
 
+### Fixed
+- A blade at a second site fetched its agent binaries from the **first** site,
+  because the addresses in the desired state are absolute and name whichever
+  site somebody typed. It worked here only because the two networks are routed
+  to each other. Each site now holds the binaries itself, verified by checksum,
+  and hands its blades an address in their own room — the same treatment images
+  have had. The site fetches them from the **centre** rather than from the
+  address as written, which is the same fault one level up: it showed itself as
+  a checksum mismatch when the other site turned out to be holding a stale copy.
+- The netboot payload is built on the centre now, not on a site machine with
+  the result carried over by hand, and the firmware inside it comes from a
+  pinned revision of the Raspberry Pi firmware repository instead of a
+  directory somebody populated once. `tools/fetch-firmware.sh` fetches it and
+  records the revision. The new firmware was proven the only way a payload can
+  be: a blade netbooted on it and installed.
+
+### Decided
+- **A blade that moves between sites stays the same blade.** The serial is the
+  identity: the record, its events and its measurements stay, while the address
+  and the name follow the site it now stands in. Retiring the old entry and
+  enrolling a new one would end a module's history every time somebody picked
+  it up.
+
 ## v0.8.1-alpha — 2026-08-26
 
 The first release with two sites actually running: a centre on one machine, a
