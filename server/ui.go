@@ -3608,14 +3608,14 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
       <th>{{t .L "inv.blade"}}</th><th>{{t .L "inv.where"}}</th>
       <th>{{t .L "inv.board"}}</th><th>{{t .L "inv.ram"}}</th>
       <th>{{t .L "inv.cpu"}}</th><th>{{t .L "inv.storage"}}</th>
-      <th>{{t .L "inv.firmware"}}</th><th>{{t .L "inv.running"}}</th>
+      <th>{{t .L "inv.firmware"}}</th><th>{{t .L "inv.running"}}</th><th></th>
     </tr></thead>
     <tbody>
     {{range .Rows}}
       <tr>
         <td><span class="dot {{.LED}}"></span> <b>{{if .Hostname}}{{.Hostname}}{{else}}{{.Serial}}{{end}}</b>
           <div class="mono sub2">{{.Serial}}{{if .IP}} · {{.IP}}{{end}}</div></td>
-        <td>{{.Site}}
+        <td>{{if .Site}}{{.Site}}{{else}}<span class="hint">{{t $.L "inv.unused"}}</span>{{end}}
           <div class="mono sub2">{{.Rack}}{{if .Slot}} · {{t $.L "th.slot"}} {{.Slot}}{{end}}</div></td>
         <td>{{if .Missing}}<span class="hint">{{t $.L "inv.none"}}</span>{{else}}{{.Board}}
           <div class="mono sub2">{{if .Rev}}{{.Rev}}{{end}}{{if .Maker}} · {{.Maker}}{{end}}{{if .Radio}} · {{.Radio}}{{end}}</div>{{end}}</td>
@@ -3629,12 +3629,20 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
           {{if .BootVia}}<div class="hint">{{.BootVia}}</div>{{end}}</td>
         <td>{{.OS}}
           <div class="mono sub2">{{.Kernel}}{{if .Seen}} · {{.Seen}}{{end}}</div></td>
+        <td class="right">
+          {{if .Unused}}
+          <form method="post" action="/inventory/{{.Serial}}/forget"
+                onsubmit="return confirm('{{printf (t $.L "inv.forgetask") (or .Hostname .Serial)}}')">
+            <button class="ghost danger">{{t $.L "inv.forget"}}</button></form>
+          {{end}}
+        </td>
       </tr>
     {{end}}
     </tbody>
   </table>
   {{else}}<div class="body"><p class="hint">{{t .L "inv.empty"}}</p></div>{{end}}
-  <div class="body"><p class="hint" style="margin:0">{{t .L "inv.fwhint"}}</p></div>
+  <div class="body"><p class="hint" style="margin:0">{{t .L "inv.fwhint"}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "inv.forgethint"}}</p></div>
 </div>
 
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
@@ -3721,4 +3729,22 @@ func (a *App) hUIBladeTarget(w http.ResponseWriter, r *http.Request) {
 	}
 	a.logEvent(serial, "info", "install target set to "+target)
 	redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "tgt.saved"), b.Hostname, target))
+}
+
+// hUIBladeForget removes a blade nobody has in a slot. The inventory is where
+// this belongs: it is the page that lists blades regardless of where they
+// stand, so it is the page where one that stands nowhere is visible at all.
+func (a *App) hUIBladeForget(w http.ResponseWriter, r *http.Request) {
+	l := a.langOf(r)
+	serial := r.PathValue("serial")
+	b, err := a.getBlade(serial)
+	name := serial
+	if err == nil && b.Hostname != "" {
+		name = b.Hostname
+	}
+	if err := a.forgetBlade(serial); err != nil {
+		redirectMsg(w, r, "/inventory", "err", errText(l, err))
+		return
+	}
+	redirectMsg(w, r, "/inventory", "msg", fmt.Sprintf(T(l, "inv.forgot"), name))
 }

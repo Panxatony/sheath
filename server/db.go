@@ -1237,3 +1237,60 @@ func (a *App) mergeFacts(serial string, add map[string]any) {
 	}
 	_, _ = a.db.Exec(`UPDATE blades SET facts_json=? WHERE serial=?`, string(out), serial)
 }
+
+// forgetBlade removes a blade and everything recorded about it.
+//
+// Delete means delete: the measurements, the commands nobody will run now, an
+// alert about a machine that is gone, its own configuration scope and the
+// netboot session it left behind. What stays is the log — what happened,
+// happened, and the rack view joins it to blades, so the lines of a blade
+// that is gone stop being shown without being rewritten.
+//
+// Refused while the blade sits in a slot: taking it out of the BladeRunner is
+// a separate act with its own consequences, and doing both at once means
+// somebody meant one of them.
+func (a *App) forgetBlade(serial string) error {
+	b, err := a.getBlade(serial)
+	if err != nil {
+		return me("err.bladeunknown", serial)
+	}
+	if b.RackID != nil {
+		return me("err.stillslotted", b.RackName)
+	}
+	switch b.InstallState {
+	case installPending, installWipe:
+		return me("err.busyinstall")
+	}
+	if b.State == "provisioning" {
+		return me("err.busyinstall")
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, stmt := range []string{
+		`DELETE FROM samples WHERE serial=?`,
+		`DELETE FROM commands WHERE serial=?`,
+		`DELETE FROM alerts WHERE serial=?`,
+		`DELETE FROM netboot WHERE serial=?`,
+		`DELETE FROM blades WHERE serial=?`,
+	} {
+		if _, err := tx.Exec(stmt, serial); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM configs WHERE scope=?`, "blade:"+serial); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	name := b.Hostname
+	if name == "" {
+		name = serial
+	}
+	a.logEvent("", "warn", "blade "+name+" ("+serial+") removed from the inventory")
+	_, _ = a.syncDHCP()
+	return nil
+}

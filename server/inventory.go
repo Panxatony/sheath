@@ -48,6 +48,7 @@ type invRow struct {
 	Agent   string
 	Seen    string
 	LED     string
+	Unused  bool // in no BladeRunner, so it can be removed from here
 	Missing bool // nothing hardware-wise has ever been reported
 }
 
@@ -91,6 +92,7 @@ func (a *App) inventory(l Lang) ([]invRow, invSummary, error) {
 		if b.Slot != nil {
 			r.Slot = fmt.Sprintf("%02d", *b.Slot)
 		}
+		r.Unused = b.RackID == nil
 		if b.LastSeen != "" {
 			r.Seen = ago(l, b.LastSeen)
 		}

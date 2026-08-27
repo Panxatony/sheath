@@ -198,6 +198,7 @@ func main() {
 	mux.HandleFunc("POST /sites/{id}/enroll", app.requireUI(app.hUISiteEnroll))
 	mux.HandleFunc("GET /map", app.requireUI(app.hTopology))
 	mux.HandleFunc("GET /inventory", app.requireUI(app.hInventory))
+	mux.HandleFunc("POST /inventory/{serial}/forget", app.requireUI(app.hUIBladeForget))
 	mux.HandleFunc("GET /api/v1/inventory", app.requireAdmin(app.hInventoryAPI))
 	mux.HandleFunc("GET /images", app.requireUI(app.hImagesPage))
 	mux.HandleFunc("POST /images/add", app.requireUI(app.hUIImageAdd))

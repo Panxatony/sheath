@@ -319,6 +319,21 @@ var catalog = map[string]map[Lang]string{
 	"inv.nvme":    {LangEN: "NVMe", LangDE: "NVMe"},
 	"inv.lite":    {LangEN: "Lite (no eMMC)", LangDE: "Lite (kein eMMC)"},
 	"inv.radio":   {LangEN: "wireless", LangDE: "Funk"},
+	"err.stillslotted": {
+		LangEN: "this blade sits in %s. Take it out of the slot first — that is a separate act, with its own consequences.",
+		LangDE: "Dieses Blade steckt in %s. Nimm es erst aus dem Steckplatz — das ist ein eigener Vorgang mit eigenen Folgen."},
+	"err.busyinstall": {
+		LangEN: "an installation is under way on this blade",
+		LangDE: "Auf diesem Blade läuft gerade eine Installation"},
+	"inv.forget": {LangEN: "Forget", LangDE: "Entfernen"},
+	"inv.unused": {LangEN: "in no BladeRunner", LangDE: "in keinem BladeRunner"},
+	"inv.forgot": {LangEN: "%s removed from the inventory", LangDE: "%s aus dem Inventar entfernt"},
+	"inv.forgetask": {
+		LangEN: "Remove %s from the inventory, with its measurements and its pending commands? What it did stays in the log.",
+		LangDE: "%s samt Messwerten und offenen Kommandos aus dem Inventar entfernen? Was es getan hat, bleibt im Protokoll."},
+	"inv.forgethint": {
+		LangEN: "A blade standing in a slot is not removed here: take it out of its BladeRunner first, which asks whether its disk should be erased on the way.",
+		LangDE: "Ein Blade in einem Steckplatz wird hier nicht entfernt: nimm es erst aus seinem BladeRunner, wobei gefragt wird, ob die Platte dabei gelöscht werden soll."},
 	"err.nodevice": {
 		LangEN: "this blade has no %s. It reported: %s",
 		LangDE: "Dieses Blade hat kein %s. Gemeldet hat es: %s"},

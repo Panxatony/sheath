@@ -6,6 +6,14 @@ on `main`.
 ## Unreleased
 
 ### Added
+- A blade standing in no BladeRunner can be removed from the **Inventory**
+  page, which is the page that lists blades regardless of where they stand and
+  therefore the only one where such a blade is visible at all. It takes its
+  measurements, its pending commands, an open alert and its own configuration
+  scope with it; the log keeps what happened, and shows it joined to blades, so
+  the lines of a blade that is gone simply stop appearing. A blade that is in a
+  slot is refused — taking it out of its BladeRunner is a separate act, and the
+  one that asks whether to erase the disk on the way.
 - A site removes cached images no blade of its own is assigned to any more.
   The cache only ever grew, which is fine on a machine with a 500 GB disk and
   wrong on the one that replaced it: a Compute Module with six gigabytes, where

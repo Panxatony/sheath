@@ -696,13 +696,11 @@ func (a *App) hBladeUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) hBladeDelete(w http.ResponseWriter, r *http.Request) {
 	serial := r.PathValue("serial")
-	if _, err := a.db.Exec(`DELETE FROM blades WHERE serial=?`, serial); err != nil {
-		fail(w, 500, "%v", err)
+	if err := a.forgetBlade(serial); err != nil {
+		fail(w, 409, "%v", err)
 		return
 	}
-	sync, _ := a.syncDHCP()
-	a.logEvent(serial, "warn", "blade removed from the inventory")
-	writeJSON(w, 200, map[string]any{"deleted": serial, "dhcp": sync})
+	writeJSON(w, 200, map[string]any{"deleted": serial})
 }
 
 func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {

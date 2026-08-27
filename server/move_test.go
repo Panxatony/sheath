@@ -114,3 +114,58 @@ func mustRack(t *testing.T, a *App, siteID int64, name string) int64 {
 	id, _ := res.LastInsertId()
 	return id
 }
+
+// Removing a blade is for one that stands nowhere. A blade in a slot is taken
+// out of its BladeRunner first — that act asks whether to erase its disk on
+// the way, and doing both at once means somebody meant one of them.
+func TestForgetOnlyTakesBladesThatStandNowhere(t *testing.T) {
+	a := testApp(t)
+	rack := mustRack(t, a, 1, "hall")
+	const serial = "10000000feedface"
+	if _, err := a.db.Exec(`INSERT INTO blades(serial,short_serial,state,token,created)
+		VALUES(?,'feedface','new','tok','2026-01-01T00:00:00Z')`, serial); err != nil {
+		t.Fatal(err)
+	}
+	slot := 1
+	if err := a.placeBlade(serial, &rack, &slot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO samples(serial,ts,soc) VALUES(?,?,42)`,
+		serial, now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.putConfig("blade:"+serial, map[string]any{"install": map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	a.logEvent(serial, "info", "installed once, long ago")
+
+	if err := a.forgetBlade(serial); err == nil {
+		t.Fatal("a blade standing in a slot was removed")
+	}
+
+	// Out of the slot, and it can go.
+	if err := a.placeBlade(serial, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.forgetBlade(serial); err != nil {
+		t.Fatalf("removing an unused blade: %v", err)
+	}
+	if _, err := a.getBlade(serial); err == nil {
+		t.Error("the blade is still there")
+	}
+	var n int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM samples WHERE serial=?`, serial).Scan(&n); err != nil || n != 0 {
+		t.Errorf("%d measurement(s) left behind", n)
+	}
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM configs WHERE scope=?`, "blade:"+serial).Scan(&n); err != nil || n != 0 {
+		t.Errorf("its configuration scope is still there")
+	}
+	// The log keeps what happened; it is joined to blades, so a gone blade's
+	// lines simply stop being shown.
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM events WHERE serial=?`, serial).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 {
+		t.Error("the log was rewritten")
+	}
+}
