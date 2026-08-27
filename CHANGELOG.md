@@ -6,10 +6,11 @@ on `main`.
 ## Unreleased
 
 ### Added
-- A blade with no slot can be put into one from the **Inventory**, which is
-  where such a blade is visible in the first place. One list of free slots
-  named the way somebody at the rack would say it — site, enclosure, slot —
-  rather than two menus where the second depends on the first.
+- The inventory says what state each blade is in — the same wording the slot
+  rows use, from "in sync" to "writing 60 %" — and which address it actually
+  holds, with the address it was given beside it where the two differ. A blade
+  in no slot has no reservation and takes a pool address, which is exactly when
+  somebody is looking for it.
 - The list of blades without a slot says which site last saw one on the wire.
   A blade in no BladeRunner has no site of its own, but a site watched it come
   up and wrote that down; without it the list says "somewhere".

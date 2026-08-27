@@ -494,3 +494,16 @@ func (a *App) siteLastSaw(serial string) (int64, string) {
 	}
 	return id, st.Name
 }
+
+// addressOnTheWire is the address a blade was last seen holding, as the site
+// read it out of the DHCP log. Not the same question as "which address does
+// it have" in the inventory: that one is derived from where the blade stands,
+// and a blade standing nowhere still holds something.
+func (a *App) addressOnTheWire(serial string) string {
+	var ip string
+	if err := a.db.QueryRow(`SELECT ip FROM netboot WHERE serial=? AND ip<>''
+		ORDER BY last_seen DESC LIMIT 1`, serial).Scan(&ip); err != nil {
+		return ""
+	}
+	return ip
+}

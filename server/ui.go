@@ -1498,6 +1498,17 @@ a.langlink{font:600 .74rem/1 ui-monospace,monospace;text-decoration:none;padding
 border:1px solid var(--rule-s);border-radius:3px;color:var(--ink-2)}
 a.langlink:hover{color:var(--accent-ink);border-color:var(--accent)}
 table{border-collapse:collapse;width:100%;font-size:1rem}
+/* A wide table is allowed to be wide: squeezing ten columns into the page
+   turned "Compute Module 4 Rev 1.1" into four lines and the slot chooser into
+   a sliver. It scrolls in its own box instead, and the page does not. */
+.tbl-wrap{overflow-x:auto}
+.inv{min-width:72rem}
+.inv td{vertical-align:top}
+/* The name of a module is one thing and reads as one line. Broken over four,
+   "Compute Module 4 Rev 1.1" stops looking like a name at all. */
+.inv .board{white-space:nowrap}
+.inv td:first-child{min-width:13rem}
+.inv td.right{white-space:nowrap}
 th{text-align:left;font:600 .78rem/1 ui-monospace,monospace;letter-spacing:.1em;
 text-transform:uppercase;color:var(--ink-3);padding:.7rem .9rem;border-bottom:1px solid var(--rule-s)}
 td{padding:.6rem .9rem;border-bottom:1px solid var(--rule);vertical-align:middle}
@@ -3582,7 +3593,7 @@ func (a *App) hInventory(w http.ResponseWriter, r *http.Request) {
 	msg, errMsg := flash(r)
 	render(w, inventoryTmpl, map[string]any{
 		"L": l, "Path": "/inventory", "LocalSite": a.localSiteID(),
-		"Rows": rows, "Sum": sum, "Unknown": unknown, "Free": a.freeSlots(),
+		"Rows": rows, "Sum": sum, "Unknown": unknown,
 		"Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
 	})
 }
@@ -3619,41 +3630,39 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
   <div class="card-head"><h2>{{t .L "inv.title"}}</h2>
     <span class="tag">{{t .L "inv.revhint"}}</span></div>
   {{if .Rows}}
-  <table class="tbl">
+  <div class="tbl-wrap">
+  <table class="tbl inv">
     <thead><tr>
       <th>{{t .L "inv.blade"}}</th><th>{{t .L "inv.where"}}</th>
-      <th>{{t .L "inv.board"}}</th><th>{{t .L "inv.ram"}}</th>
-      <th>{{t .L "inv.cpu"}}</th><th>{{t .L "inv.storage"}}</th>
+      <th>{{t .L "th.status"}}</th>
+      <th>{{t .L "inv.board"}}</th><th>{{t .L "inv.storage"}}</th>
       <th>{{t .L "inv.firmware"}}</th><th>{{t .L "inv.running"}}</th><th></th>
     </tr></thead>
     <tbody>
     {{range .Rows}}
       <tr>
         <td><span class="dot {{.LED}}"></span> <b>{{if .Hostname}}{{.Hostname}}{{else}}{{.Serial}}{{end}}</b>
-          <div class="mono sub2">{{.Serial}}{{if .IP}} · {{.IP}}{{end}}</div></td>
-        <td>{{if .Site}}{{.Site}}{{else}}<span class="hint">{{t $.L "inv.unused"}}</span>{{end}}
-          <div class="mono sub2">{{.Rack}}{{if .Slot}} · {{t $.L "th.slot"}} {{.Slot}}{{end}}</div></td>
-        <td>{{if .Missing}}<span class="hint">{{t $.L "inv.none"}}</span>{{else}}{{.Board}}
+          <div class="mono sub2">{{.Serial}}</div>
+          <div class="mono sub2">{{if .LiveIP}}{{.LiveIP}}{{if .Drifted}} <span class="hint">({{t $.L "inv.given"}} {{.IP}})</span>{{end}}{{else}}{{if .IP}}{{.IP}}{{else}}—{{end}}{{end}}</div></td>
+        <td>{{if .Site}}{{.Site}}
+            <div class="mono sub2">{{.Rack}}{{if .Slot}} · {{t $.L "th.slot"}} {{.Slot}}{{end}}</div>
+          {{else}}
+            {{if .SawSite}}<a href="/sites/{{.SiteID}}">{{.SawSite}}</a>{{else}}—{{end}}
+            <div class="sub2 hint">{{t $.L "inv.unused"}}</div>
+          {{end}}</td>
+        <td><span class="chip {{.SLED}}">{{.Status}}</span>
+          {{if .Seen}}<div class="mono sub2">{{.Seen}}</div>{{end}}</td>
+        <td>{{if .Missing}}<span class="hint">{{t $.L "inv.none"}}</span>{{else}}<span class="board">{{.Board}}</span>
+          <div class="mono sub2">{{.RAM}}{{if .SoC}} · {{.SoC}}{{end}}{{if .Cores}} · {{.Cores}} × {{.MHz}}{{end}}</div>
           <div class="mono sub2">{{if .Rev}}{{.Rev}}{{end}}{{if .Maker}} · {{.Maker}}{{end}}{{if .Radio}} · {{.Radio}}{{end}}</div>{{end}}</td>
-        <td class="num">{{.RAM}}</td>
-        <td>{{if .SoC}}{{.SoC}}{{end}}
-          <div class="mono sub2">{{if .Cores}}{{.Cores}} × {{end}}{{.MHz}}</div></td>
         <td class="mono">{{if .NVMe}}{{.NVMe}}{{end}}
           {{if .EMMC}}<div class="sub2">{{.EMMC}}</div>{{end}}</td>
         <td>{{if .Boot}}<span class="mono">{{.Boot}}</span>{{end}}
           <div class="mono sub2">{{if .VC}}VC {{.VC}}{{end}}</div>
           {{if .BootVia}}<div class="hint">{{.BootVia}}</div>{{end}}</td>
         <td>{{.OS}}
-          <div class="mono sub2">{{.Kernel}}{{if .Seen}} · {{.Seen}}{{end}}</div></td>
+          <div class="mono sub2">{{.Kernel}}</div></td>
         <td class="right">
-          {{if and .Unused $.Free}}
-          <form method="post" action="/inventory/{{.Serial}}/place" style="display:flex;gap:.4rem;margin:0 0 .4rem">
-            <select name="slot" aria-label="{{t $.L "inv.place"}}">
-              {{range $.Free}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
-            </select>
-            <button class="ghost">{{t $.L "inv.place"}}</button>
-          </form>
-          {{end}}
           {{if .Unused}}
           <form method="post" action="/inventory/{{.Serial}}/forget"
                 onsubmit="return confirm('{{printf (t $.L "inv.forgetask") (or .Hostname .Serial)}}')">
@@ -3664,6 +3673,7 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
     {{end}}
     </tbody>
   </table>
+  </div>
   {{else}}<div class="body"><p class="hint">{{t .L "inv.empty"}}</p></div>{{end}}
   <div class="body"><p class="hint" style="margin:0">{{t .L "inv.fwhint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "inv.forgethint"}}</p></div>
@@ -3771,39 +3781,4 @@ func (a *App) hUIBladeForget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectMsg(w, r, "/inventory", "msg", fmt.Sprintf(T(l, "inv.forgot"), name))
-}
-
-// hUIBladePlace puts a blade from the inventory into a free slot. The slot is
-// one value — "<rack>:<slot>" — because a blade goes into a slot, and asking
-// for the enclosure and the position separately makes the reader do the
-// joining that the list already did.
-func (a *App) hUIBladePlace(w http.ResponseWriter, r *http.Request) {
-	l := a.langOf(r)
-	serial := r.PathValue("serial")
-	if err := r.ParseForm(); err != nil {
-		redirectMsg(w, r, "/inventory", "err", T(l, "err.form"))
-		return
-	}
-	rackStr, slotStr, ok := strings.Cut(r.FormValue("slot"), ":")
-	rackID, err1 := strconv.ParseInt(rackStr, 10, 64)
-	slot, err2 := strconv.Atoi(slotStr)
-	if !ok || err1 != nil || err2 != nil {
-		redirectMsg(w, r, "/inventory", "err", T(l, "err.form"))
-		return
-	}
-	if err := a.placeBlade(serial, &rackID, &slot); err != nil {
-		redirectMsg(w, r, "/inventory", "err", errText(l, err))
-		return
-	}
-	if _, err := a.syncDHCP(); err != nil {
-		redirectMsg(w, r, "/inventory", "err", T(l, "err.dhcpinsert", errText(l, err)))
-		return
-	}
-	b, err := a.getBlade(serial)
-	if err != nil {
-		redirectMsg(w, r, "/inventory", "msg", T(l, "msg.saved"))
-		return
-	}
-	redirectMsg(w, r, "/inventory", "msg",
-		fmt.Sprintf(T(l, "inv.placed"), b.Hostname, b.RackName, slot, b.IP))
 }

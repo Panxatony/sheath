@@ -48,8 +48,14 @@ type invRow struct {
 	Agent   string
 	Seen    string
 	LED     string
-	Unused  bool // in no BladeRunner, so it can be removed from here
-	Missing bool // nothing hardware-wise has ever been reported
+	Unused  bool  // in no BladeRunner, so it can be removed from here
+	SiteID  int64 // for a blade with no slot: the site that last saw it
+	SawSite string
+	Status  string // what the slot rows say: in sync, drift, writing, offline …
+	SLED    string
+	LiveIP  string // the address it actually holds, as the wire saw it
+	Drifted bool   // the address it holds is not the one it was given
+	Missing bool   // nothing hardware-wise has ever been reported
 }
 
 // invSummary is the line above the table: what the fleet adds up to.
@@ -93,11 +99,34 @@ func (a *App) inventory(l Lang) ([]invRow, invSummary, error) {
 			r.Slot = fmt.Sprintf("%02d", *b.Slot)
 		}
 		r.Unused = b.RackID == nil
+		if r.Unused {
+			// It stands in no enclosure, so it has no site of its own — but a
+			// site watched it come up and wrote that down. Without that the
+			// row says "somewhere", and somewhere is not a place to go
+			// looking for a blade.
+			r.SiteID, r.SawSite = a.siteLastSaw(b.Serial)
+		}
 		if b.LastSeen != "" {
 			r.Seen = ago(l, b.LastSeen)
 		}
 		lvl, _ := a.evalHealth(b)
 		r.LED = lvl.chip()
+		key, sled, arg := a.rowStatus(b, lvl)
+		// Most of those strings take no argument, and handing one over anyway
+		// prints the complaint into the column: "offline%!(EXTRA string=)".
+		r.Status, r.SLED = T(l, key), sled
+		if arg != "" {
+			r.Status = T(l, key, arg)
+		}
+
+		// The address it was given comes from (site, BladeRunner, slot). The
+		// address it holds comes from the wire, and the two part company more
+		// often than one would like: a blade in no slot has no reservation and
+		// takes a pool address, which is exactly when somebody is looking for
+		// it.
+		if ip := a.addressOnTheWire(b.Serial); ip != "" && ip != r.IP {
+			r.LiveIP, r.Drifted = ip, r.IP != ""
+		}
 
 		board := str(f, "board")
 		if board != "" {
@@ -230,49 +259,4 @@ func (a *App) hInventoryAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"blades": rows, "summary": sum})
-}
-
-// freeSlot is one place a blade could be put, named the way somebody at the
-// rack would say it: which building, which enclosure, which slot.
-type freeSlot struct {
-	Value string // "<rack id>:<slot>"
-	Label string
-}
-
-// freeSlots lists every empty slot in the fleet. The inventory is where an
-// unplaced blade is visible, so it is where putting it somewhere belongs —
-// and a blade is put into a slot, not into a BladeRunner, so one list of
-// slots beats two dependent menus.
-func (a *App) freeSlots() []freeSlot {
-	racks, err := a.listRacks()
-	if err != nil {
-		return nil
-	}
-	blades, err := a.listBlades()
-	if err != nil {
-		return nil
-	}
-	taken := map[string]bool{}
-	for _, b := range blades {
-		if b.RackID != nil && b.Slot != nil {
-			taken[fmt.Sprintf("%d:%d", *b.RackID, *b.Slot)] = true
-		}
-	}
-	var out []freeSlot
-	for _, rk := range racks {
-		site := a.siteName(rk.SiteID)
-		for s := 1; s <= rk.Size; s++ {
-			key := fmt.Sprintf("%d:%d", rk.ID, s)
-			if taken[key] {
-				continue
-			}
-			label := fmt.Sprintf("%s · %s · %02d", site, rk.Name, s)
-			if site == "" {
-				label = fmt.Sprintf("%s · %02d", rk.Name, s)
-			}
-			out = append(out, freeSlot{Value: key, Label: label})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
-	return out
 }
