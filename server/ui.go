@@ -597,6 +597,7 @@ func (a *App) hUISiteUpdate(w http.ResponseWriter, r *http.Request) {
 	st.Location = strings.TrimSpace(r.FormValue("location"))
 	st.NetBase = strings.TrimSpace(r.FormValue("net_base"))
 	st.HostPrefix = strings.ToLower(strings.TrimSpace(r.FormValue("host_prefix")))
+	st.Lease = strings.ToLower(strings.TrimSpace(r.FormValue("lease")))
 	if v, err := strconv.Atoi(r.FormValue("pool_from")); err == nil {
 		st.PoolFrom = v
 	}
@@ -2951,6 +2952,9 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
           <input id="pf" type="number" name="pool_from" value="{{.S.PoolFrom}}" min="1" max="254"></div>
         <div class="narrow"><label for="pt">{{t .L "site.poolto"}}</label>
           <input id="pt" type="number" name="pool_to" value="{{.S.PoolTo}}" min="1" max="254"></div>
+        <div class="narrow"><label for="ls">{{t .L "site.lease"}}</label>
+          <input id="ls" type="text" name="lease" value="{{.S.Lease}}"
+                 pattern="([0-9]+[smhd]|infinite)" placeholder="1h"></div>
         <div class="narrow"><label for="hp">{{t .L "site.prefix"}}</label>
           <input id="hp" type="text" name="host_prefix" value="{{.S.HostPrefix}}"
                  maxlength="8" pattern="[a-z0-9]*" placeholder="{{t .L "site.prefixph"}}"></div>
@@ -2959,6 +2963,7 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
     </form>
     <p class="hint" style="margin:.9rem 0 0">{{t .L "site.movehint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "site.prefixhint" .Example}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "site.leasehint"}}</p>
   </div>
 </div>
 

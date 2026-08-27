@@ -58,6 +58,7 @@ type desired struct {
 		Domain   string `json:"domain"`
 		PoolFrom int    `json:"pool_from"`
 		PoolTo   int    `json:"pool_to"`
+		Lease    string `json:"lease"`
 	} `json:"site"`
 	Blades []desiredBlade `json:"blades"`
 	Images []desiredImage `json:"images"`
@@ -184,6 +185,9 @@ func (s *site) pass() error {
 	}
 	if err := s.ensureBinaries(d); err != nil {
 		log.Printf("binaries: %v", err)
+	}
+	if err := s.ensureRange(d); err != nil {
+		log.Printf("dhcp range: %v", err)
 	}
 	s.flush()
 	if s.online && s.relay != nil {

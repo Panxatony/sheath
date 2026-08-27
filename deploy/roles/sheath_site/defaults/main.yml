@@ -25,6 +25,6 @@ sheath_site_net_base: "{{ ansible_default_ipv4.address.split('.')[:3] | join('.'
 sheath_site_gateway: "{{ sheath_site_net_base }}.1"
 sheath_site_dns_upstream: "{{ sheath_site_gateway }}"
 sheath_site_domain: blades.lan
-sheath_site_pool_from: 210
-sheath_site_pool_to: 240
-sheath_site_lease: 1h
+# The pool and the lease time live in the site record, not here: sheath-site
+# writes them into the file below from what the centre hands it.
+sheath_site_range_file: /etc/dnsmasq.d/sheath-range.conf

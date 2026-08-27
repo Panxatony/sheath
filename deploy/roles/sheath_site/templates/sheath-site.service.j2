@@ -18,6 +18,7 @@ ExecStart=/usr/local/bin/sheath-site \
     --listen={{ sheath_site_listen }} \
     --token-file={{ sheath_site_token_file }} \
     --dhcp-hosts={{ sheath_site_hosts_dir }} \
+    --dhcp-range-file={{ sheath_site_range_file }} \
     --dnsmasq-log={{ sheath_site_dnsmasq_log }} \
     --images={{ sheath_images_dir }} \
     --tftp={{ sheath_tftp_dir }} \

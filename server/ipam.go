@@ -656,3 +656,11 @@ func (a *App) siteRelayURL(siteID int64) string {
 	}
 	return st.RelayURL
 }
+
+// validLease accepts what dnsmasq accepts for a lease time, and nothing else:
+// a number with a unit, or "infinite". It is written straight into a
+// configuration file that dnsmasq refuses to start on if it is wrong, and a
+// site whose DHCP server will not start is a site where nothing boots.
+var leaseRe = regexp.MustCompile(`^([0-9]+[smhd]|infinite)$`)
+
+func validLease(s string) bool { return s == "" || leaseRe.MatchString(s) }

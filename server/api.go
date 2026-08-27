@@ -281,10 +281,11 @@ func (a *App) siteDesired(id int64) (*SiteDesired, error) {
 	raw, _ := json.Marshal(struct {
 		Net, GW, DNS, Domain string
 		From, To             int
+		Lease                string
 		B                    []SiteBlade
 		I                    []SiteImage
 		T                    SiteBoot
-	}{st.NetBase, st.Gateway, st.DNS, st.Domain, st.PoolFrom, st.PoolTo,
+	}{st.NetBase, st.Gateway, st.DNS, st.Domain, st.PoolFrom, st.PoolTo, st.Lease,
 		out.Blades, out.Images, out.Boot})
 	sum := sha256.Sum256(raw)
 	out.Version = "sha256:" + hex.EncodeToString(sum[:])[:16]

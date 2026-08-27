@@ -9,21 +9,23 @@ bind-interfaces
 except-interface=lo
 
 # ── DNS ──
-domain={{ sheath_site_domain }}
 local=/{{ sheath_site_domain }}/
 expand-hosts
 server={{ sheath_site_dns_upstream }}
 cache-size=1000
 
 # ── DHCP ──
-# Address plan: .1 gateway, .10 this machine, .{{ sheath_site_pool_from }}–.{{ sheath_site_pool_to }} a
-# pool for blades that are not in the inventory yet — they boot, enroll, and
-# get a reservation afterwards. A BladeRunner's blades sit in a fixed block
-# derived from (site, BladeRunner, slot).
-dhcp-range={{ sheath_site_net_base }}.{{ sheath_site_pool_from }},{{ sheath_site_net_base }}.{{ sheath_site_pool_to }},255.255.255.0,{{ sheath_site_lease }}
-dhcp-option=option:router,{{ sheath_site_gateway }}
-dhcp-option=option:dns-server,{{ ansible_default_ipv4.address }}
-dhcp-option=option:domain-name,{{ sheath_site_domain }}
+# The address pool and the lease time are NOT here. They belong to the site
+# record in the interface, and sheath-site writes them into
+# {{ sheath_site_range_file }} on every pass — otherwise changing the pool in
+# the interface would change nothing on the wire until somebody remembered to
+# run this playbook again.
+#
+# Address plan: .1 gateway, .10 this machine, the pool for blades that are not
+# in the inventory yet — they boot, enroll, and get a reservation afterwards.
+# A BladeRunner's blades sit in a fixed block derived from (site, BladeRunner,
+# slot).
+#
 # This is the only DHCP server in this segment. Without it dnsmasq stays
 # polite and waits for a server that does not exist.
 dhcp-authoritative

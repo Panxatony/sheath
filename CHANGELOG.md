@@ -5,6 +5,19 @@ on `main`.
 
 ## Unreleased
 
+### Added
+- **The address pool and the lease time belong to the site**, and reach the
+  wire without a deployment. Both were already fields on the site page, and
+  both were ignored: the numbers dnsmasq actually served came from a variable
+  in an Ansible inventory, so changing the pool in the interface changed
+  nothing until somebody remembered to run the playbook. The site now writes
+  that part of the DHCP configuration itself from the state the centre hands
+  it — range, lease, gateway, resolver and domain — checks it with
+  `dnsmasq --test` before putting it in place, and restarts dnsmasq, because
+  SIGHUP re-reads host records and not the configuration.
+- The resolver a blade is told to use is the site machine, which knows the
+  site's own names, rather than the upstream one it was being handed before.
+
 ### Fixed
 - **An installed blade talks to its own site now, not to the centre.** The
   installer wrote whatever address the centre named into the seed, and the

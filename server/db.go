@@ -176,6 +176,7 @@ var migrations = []string{
 	`ALTER TABLE sites ADD COLUMN enroll_code TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN host_prefix TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN relay_url TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN lease TEXT NOT NULL DEFAULT '1h'`,
 	`ALTER TABLE sites ADD COLUMN enroll_until TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
@@ -231,6 +232,10 @@ type Site struct {
 	// Where the blades of this site report. The site tells the centre; only
 	// the site knows the address its own blades can reach.
 	RelayURL string `json:"relay_url"`
+
+	// How long an address out of the pool is good for. Short where blades
+	// come and go, long where the same ones stand for months.
+	Lease string `json:"lease"`
 }
 
 type Rack struct {
@@ -596,10 +601,13 @@ func (a *App) updateSite(id int64, st Site) error {
 	if !validHostPrefix(st.HostPrefix) {
 		return me("err.siteprefix")
 	}
+	if !validLease(st.Lease) {
+		return me("err.sitelease")
+	}
 	_, err := a.db.Exec(`UPDATE sites SET name=?,location=?,net_base=?,gateway=?,
-		dns=?,domain=?,pool_from=?,pool_to=?,host_prefix=? WHERE id=?`,
+		dns=?,domain=?,pool_from=?,pool_to=?,host_prefix=?,lease=? WHERE id=?`,
 		st.Name, st.Location, st.NetBase, st.Gateway, st.DNS, st.Domain,
-		st.PoolFrom, st.PoolTo, st.HostPrefix, id)
+		st.PoolFrom, st.PoolTo, st.HostPrefix, st.Lease, id)
 	if err == nil {
 		a.invalidateNetCache()
 	}
@@ -966,7 +974,7 @@ func (a *App) listImages() ([]Image, error) {
 
 const siteCols = `id,name,location,net_base,gateway,dns,domain,
 	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created,
-	payload,site_version,enroll_code,enroll_until,host_prefix,relay_url`
+	payload,site_version,enroll_code,enroll_until,host_prefix,relay_url,lease`
 
 func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	var st Site
@@ -974,7 +982,7 @@ func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	err := sc.Scan(&st.ID, &st.Name, &st.Location, &st.NetBase, &st.Gateway, &st.DNS,
 		&st.Domain, &st.PoolFrom, &st.PoolTo, &st.OffsetBase, &st.OffsetStep,
 		&local, &st.Token, &st.LastSeen, &st.Created, &st.Payload, &st.SiteVersion,
-		&st.EnrollCode, &st.EnrollUntil, &st.HostPrefix, &st.RelayURL)
+		&st.EnrollCode, &st.EnrollUntil, &st.HostPrefix, &st.RelayURL, &st.Lease)
 	if err != nil {
 		return nil, err
 	}

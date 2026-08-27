@@ -32,6 +32,7 @@ type config struct {
 	SiteID    int64
 	Token     string
 	HostsDir  string
+	RangeFile string
 	Dnsmasq   string
 	LogFile   string
 	ImagesDir string
@@ -48,6 +49,8 @@ func main() {
 		siteID    = flag.Int64("site", 0, "id of this site")
 		tokenFile = flag.String("token-file", "/etc/sheath-site/token", "file holding the site token")
 		hostsDir  = flag.String("dhcp-hosts", "/etc/sheath/dhcp-hosts", "dnsmasq dhcp-hostsdir")
+		rangeFile = flag.String("dhcp-range-file", "/etc/dnsmasq.d/sheath-range.conf",
+			"file this site writes its address pool and lease time into; empty leaves it alone")
 		logFile   = flag.String("dnsmasq-log", "/srv/sheath/logs/dnsmasq.log", "dnsmasq log to watch")
 		imagesDir = flag.String("images", "/srv/sheath/images", "where images are cached")
 		agentDir  = flag.String("agent", "/srv/sheath/agent",
@@ -102,6 +105,7 @@ func main() {
 		SiteID:    *siteID,
 		Token:     strings.TrimSpace(string(tok)),
 		HostsDir:  *hostsDir,
+		RangeFile: *rangeFile,
 		LogFile:   *logFile,
 		ImagesDir: *imagesDir,
 		AgentDir:  *agentDir,

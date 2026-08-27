@@ -293,6 +293,13 @@ var catalog = map[string]map[Lang]string{
 	"enr.lead":  {LangEN: "A code the site signs itself in with, instead of a token carried there by hand. Good once, good for an hour.", LangDE: "Ein Code, mit dem sich der Standort selbst anmeldet, statt ein Token von Hand hinzutragen. Einmal gültig, eine Stunde lang."},
 	"enr.made":  {LangEN: "Code created — it is shown once", LangDE: "Code erzeugt — er wird einmal angezeigt"},
 
+	"site.lease": {LangEN: "Lease", LangDE: "Lease-Dauer"},
+	"site.leasehint": {
+		LangEN: "How long an address out of the pool is good for — 30m, 1h, 12h, or infinite. The pool and this are written into the DHCP server by the site itself, so a change here reaches the wire on the next pass. A blade in a slot has a reservation instead and keeps its address regardless.",
+		LangDE: "Wie lange eine Adresse aus dem Pool gilt — 30m, 1h, 12h oder infinite. Pool und Dauer schreibt der Standort selbst in den DHCP-Server, eine Änderung hier wirkt also beim nächsten Durchlauf. Ein Blade im Steckplatz hat stattdessen eine Reservierung und behält seine Adresse ohnehin."},
+	"err.sitelease": {
+		LangEN: "the lease must be a number with s, m, h or d — or the word infinite",
+		LangDE: "Die Lease-Dauer muss eine Zahl mit s, m, h oder d sein — oder das Wort infinite"},
 	"site.prefix":   {LangEN: "Name prefix", LangDE: "Namenskürzel"},
 	"site.prefixph": {LangEN: "none", LangDE: "keins"},
 	"site.prefixhint": {
