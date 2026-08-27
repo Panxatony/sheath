@@ -5,6 +5,13 @@ on `main`.
 
 ## Unreleased
 
+## v0.8.2-alpha — 2026-08-27
+
+An afternoon of using the thing, and what using it turned up: an installation
+that can go somewhere other than the NVMe, a site that no longer leans on
+another site, a cache that lets go, and several places where the interface
+said less than it knew.
+
 ### Added
 - An armed installation or erase can be **called off**. Arming one is a
   deliberate act and so is changing your mind; until now the only way back was
