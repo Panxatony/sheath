@@ -1031,6 +1031,12 @@ func probeArmed(b *Blade) bool {
 // and the next start belongs to its own system again.
 func (a *App) clearProbe(serial string) {
 	_, _ = a.db.Exec(`UPDATE blades SET probe='',probe_sent='' WHERE serial=?`, serial)
+	// The restart belonged to this reading and the reading is done. One that
+	// nobody took is a restart waiting to happen for no reason: the blade is
+	// in the mini OS, which will restart it by itself, and the agent would
+	// find the command afterwards and do it a second time.
+	_, _ = a.db.Exec(`UPDATE commands SET taken=? WHERE serial=? AND kind='reboot' AND taken=''`,
+		now()+" (firmware read finished)", serial)
 	_, _ = a.syncDHCP()
 }
 
