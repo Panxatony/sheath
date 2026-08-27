@@ -299,7 +299,7 @@ func explainIdle(e *idleErr) {
 		logf("This blade should boot from it, not over the network.")
 		logf("")
 		logf("  Set during bring-up via rpiboot:")
-		logf("      BOOT_ORDER=0xf26     (NVMe first, network as fallback)")
+		logf("      BOOT_ORDER=0xf162    (network, then NVMe, then SD/eMMC)")
 		logf("")
 		logf("  With network before NVMe the blade lands here on every start")
 		logf("  — and without this guard it would reinstall itself every")

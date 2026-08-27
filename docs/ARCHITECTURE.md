@@ -77,9 +77,9 @@ without a netboot installer, multi-distro would be ten times the manual work; wi
 | Button | `GPIO20` | Slot assignment, acknowledging enrollment |
 | Fan unit port | `GPIO12/13` = PWM0/1 or UART5 | Smart Fan Unit (RP2040 + EMC2101): RPM, exhaust temperature |
 | PoE indicator | `GPIO23` | Part of the health model |
-| EEPROM `BOOT_ORDER` | nibbles read from right to left | `0xf26` = NVMe → network → loop. **CM4 factory: `0xf641`** |
+| EEPROM `BOOT_ORDER` | nibbles read from right to left | `0xf162` = network → NVMe → SD/eMMC → loop. **CM4 factory: `0xf641`** |
 
-**Important:** `BOOT_ORDER=0xf26` means: try the NVMe first, fall through to netboot if the NVMe is
+**Important:** the digits are read from the right, so `0xf26` means: try the NVMe first, fall through to netboot if the NVMe is
 empty, otherwise start over. A fresh NVMe therefore ends up at the installer **by itself** —
 without switching the EEPROM, without a button, without a cable. That is the pivot of the whole
 provisioning.
@@ -596,7 +596,7 @@ There are three better ways out:
 
 Everything described so far runs without rack access. Exactly **one** step does not, and it should
 be planned deliberately instead of being discovered: the factory setting of the CM4 is `BOOT_ORDER=0xf641`
-(USB-MSD → NVMe → SD/eMMC), not the desired `0xf26`. As long as that stays this way, an empty
+(USB-MSD → NVMe → SD/eMMC), not the desired `0xf162`. As long as that stays this way, an empty
 blade does not fall through to netboot.
 
 Changing the EEPROM from the running system is not the intended route on the CM4:
@@ -607,7 +607,7 @@ a power failure during it damages the EEPROM. For a fleet that is not a routine 
 **So once per blade, via USB cable and `rpiboot`, before it goes into the rack:**
 
 ```ini
-BOOT_ORDER=0xf26            # NVMe → network → loop
+BOOT_ORDER=0xf162           # network → NVMe → SD/eMMC → loop
 NET_BOOT_MAX_RETRIES=3      # factory is 0: no retry after a TFTP timeout
 MAC_ADDRESS=02:b1:ad:00:00:03   # deterministic from the slot — solves chicken-and-egg (§5)
 TFTP_PREFIX=0               # directory = lower 4 bytes of the serial number
@@ -982,7 +982,7 @@ is `sheathd`, not `sheath` — the plain name is kept free for a command-line cl
 
 | Phase | Content | State |
 |---|---|---|
-| **0** | Bring-up: once per blade via `rpiboot`, set `BOOT_ORDER=0xf26`, `NET_BOOT_MAX_RETRIES`, `MAC_ADDRESS`. Switch ports to portfast. | done — the one manual step, §6 |
+| **0** | Bring-up: once per blade via `rpiboot`, set `BOOT_ORDER=0xf162`, `NET_BOOT_MAX_RETRIES`, `MAC_ADDRESS`. Switch ports to portfast. | done — the one manual step, §6 |
 | **1** | Server (inventory, image catalogue, config merge, REST), agent (enroll/pull/apply/status). | done |
 | **2** | dnsmasq from the inventory: DHCP reservations, fixed IPs, DNS. | done |
 | **3** | Netboot chain: TFTP, mini OS, `sheath-installer`, image delivery. | done — plugging it in is enough, distribution via dropdown |

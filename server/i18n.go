@@ -173,11 +173,11 @@ var catalog = map[string]map[Lang]string{
 	"nb.nocatalog": {
 		LangEN: "catalog is empty", LangDE: "Katalog ist leer"},
 	"nb.leasehint": {
-		LangEN: "No netboot attempted — it booted from its own storage. <code>BOOT_ORDER</code> is probably still at the factory value (<code>0xf641</code>); set <code>0xf26</code> for netboot.",
-		LangDE: "Kein Netzboot versucht — hat vom eigenen Speicher gebootet. <code>BOOT_ORDER</code> steht vermutlich noch auf Werk (<code>0xf641</code>); für Netzboot <code>0xf26</code> setzen."},
+		LangEN: "No netboot attempted — it booted from its own storage. <code>BOOT_ORDER</code> is probably still at the factory value (<code>0xf641</code>); set <code>0xf162</code> for netboot.",
+		LangDE: "Kein Netzboot versucht — hat vom eigenen Speicher gebootet. <code>BOOT_ORDER</code> steht vermutlich noch auf Werk (<code>0xf641</code>); für Netzboot <code>0xf162</code> setzen."},
 	"nb.hint": {
-		LangEN: "Read from the dnsmasq log. The Raspberry Pi bootloader announces itself as <code>PXEClient:…</code>; an ordinary Linux client does not — that is what separates a netboot from a plain address lease. A device that only took an address booted from its own storage; its <code>BOOT_ORDER</code> is probably still at the factory value (<code>0xf641</code>), <code>0xf62</code> enables netboot.",
-		LangDE: "Aus dem dnsmasq-Protokoll gelesen. Der RPi-Bootloader meldet sich mit <code>PXEClient:…</code>, ein gewöhnlicher Linux-Client nicht — daran hängt der Unterschied zwischen Netzboot und bloßem Adressbezug. Ein Gerät, das nur eine Adresse bezog, bootete vom eigenen Speicher; sein <code>BOOT_ORDER</code> steht vermutlich noch auf Werk (<code>0xf641</code>), <code>0xf62</code> erlaubt den Netzboot."},
+		LangEN: "Read from the dnsmasq log. The Raspberry Pi bootloader announces itself as <code>PXEClient:…</code>; an ordinary Linux client does not — that is what separates a netboot from a plain address lease. A device that only took an address booted from its own storage; its <code>BOOT_ORDER</code> is probably still at the factory value (<code>0xf641</code>), <code>0xf162</code> enables netboot.",
+		LangDE: "Aus dem dnsmasq-Protokoll gelesen. Der RPi-Bootloader meldet sich mit <code>PXEClient:…</code>, ein gewöhnlicher Linux-Client nicht — daran hängt der Unterschied zwischen Netzboot und bloßem Adressbezug. Ein Gerät, das nur eine Adresse bezog, bootete vom eigenen Speicher; sein <code>BOOT_ORDER</code> steht vermutlich noch auf Werk (<code>0xf641</code>), <code>0xf162</code> erlaubt den Netzboot."},
 
 	// Stages
 	"stage.dhcp":      {LangEN: "address requested", LangDE: "Adresse angefragt"},

@@ -1012,7 +1012,7 @@ func (a *App) hProvision(w http.ResponseWriter, r *http.Request) {
 			"image":       b.Image,
 			"retry_after": 30,
 			"message": "No install requested. This blade should boot locally — " +
-				"is BOOT_ORDER set to 0xf26 (NVMe before network)?",
+				"is BOOT_ORDER set to 0xf162 (network, NVMe, SD/eMMC)?",
 		})
 		return
 	}

@@ -631,7 +631,7 @@ answers again, oldest first; the site answers the blade `202` in the meantime.
 
 ### 3.8 Netboot, switchable per blade
 
-The apparent conflict: with `BOOT_ORDER=0xf26` (NVMe first) an installed blade
+The apparent conflict: with `BOOT_ORDER=0xf26` (local storage first) an installed blade
 boots locally, but then it never netboots again — a reimage would mean wiping
 the NVMe on site. With the network first it lands in the installer on *every*
 start.
@@ -655,9 +655,18 @@ d8:3a:dd:xx:xx:xx,set:bootnet,blade-r1s01,10.0.0.101,infinite   # install or era
 d8:3a:dd:xx:xx:xx,blade-r1s01,10.0.0.101,infinite               # boot locally
 ```
 
-So the rule for the fleet is **`BOOT_ORDER=0xf62`** — network first, NVMe as the
-fallback — and every blade still boots locally as long as no job is requested. A
-reimage is one click plus a reboot, with no access to the rack.
+So the rule for the fleet is **`BOOT_ORDER=0xf162`** — network, then NVMe, then
+the SD/eMMC device, then start over — and every blade still boots locally as
+long as no job is requested. A reimage is one click plus a reboot, with no
+access to the rack.
+
+The digits are read from the right: `2` network, `6` NVMe, `1` SD **or** eMMC,
+`f` back to the beginning. There is no separate digit for eMMC — on a Compute
+Module the eMMC *is* the SD device, and a Lite has a card there instead, so one
+digit covers whichever of the two the module physically has. Network stays
+first because that is where the decision is made: DHCP either offers the boot
+menu entry or it does not, and a refusal costs a moment rather than the
+45 seconds an unanswered DHCP request costs.
 
 **The tag comes from the desired state, and from nowhere else.** The centre sets
 `netboot: true` for a blade whose install state is `pending` or `wipe`; the site
@@ -1097,7 +1106,7 @@ routine tool. So do it once per blade with `rpiboot` from
 goes into the rack:
 
 ```ini
-BOOT_ORDER=0xf62                 # network → NVMe → loop (nibbles read right to left)
+BOOT_ORDER=0xf162                # network → NVMe → SD/eMMC → loop (read right to left)
 NET_BOOT_MAX_RETRIES=1           # keep this low, see below
 TFTP_PREFIX=0                    # directory = lower 4 bytes of the serial number
 MAC_ADDRESS=02:b1:ad:01:00:03    # optional: the slot's deterministic MAC
@@ -1105,7 +1114,7 @@ MAC_ADDRESS=02:b1:ad:01:00:03    # optional: the slot's deterministic MAC
 
 | Value | Factory | Meaning |
 |---|---|---|
-| `BOOT_ORDER` | `0xf641` | `0xf62` = network → NVMe → loop; `0xf26` = NVMe first |
+| `BOOT_ORDER` | `0xf641` | `0xf162` = network → NVMe → SD/eMMC → loop; `0xf26` = local storage first |
 | `NET_BOOT_MAX_RETRIES` | `0` | Retries after a TFTP timeout |
 | `DHCP_TIMEOUT` | `45000` ms | How long the bootloader waits for a DHCP reply |
 | `TFTP_PREFIX` | `0` | Serial-number subdirectory, with fallback to the TFTP root |
@@ -1113,13 +1122,18 @@ MAC_ADDRESS=02:b1:ad:01:00:03    # optional: the slot's deterministic MAC
 
 Which boot order you choose follows from §3.8:
 
-- **`0xf62` (network first)** is the one that fits this design. Every ordinary
+- **`0xf162` (network first)** is the one that fits this design. Every ordinary
   start makes one netboot attempt, but with option 43 withheld that attempt
   fails immediately and the blade continues from the NVMe. In exchange, a
   reimage never needs a hand in the rack.
-- **`0xf26` (NVMe first)** boots an installed blade without any attempt at all,
-  but a reimage then means wiping the NVMe on site. Use it only where the
-  network is not trusted to answer.
+- The `1` after it covers a blade installed to its **eMMC or an SD card**
+  rather than to NVMe: one digit for both, because on a Compute Module the
+  eMMC is the SD device and a Lite has a card slot in its place. It costs
+  nothing on a blade that boots from NVMe — that digit is only reached when the
+  NVMe has nothing to offer.
+- **`0xf26` (local storage first)** boots an installed blade without any
+  attempt at all, but a reimage then means wiping the disk on site. Use it only
+  where the network is not trusted to answer.
 
 > **`NET_BOOT_MAX_RETRIES` belongs low (0 or 1)** with a network-first order.
 > Every ordinary boot pays for the blocked netboot attempt, and it has to fail
