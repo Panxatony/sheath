@@ -15,6 +15,9 @@ on `main`.
   installer takes the device from the job for its "is a system already here"
   check too, instead of always looking at `/dev/nvme0n1`, and its boot-order
   advice follows the target.
+- The inventory says which of the two card devices a blade came up from. The
+  firmware has one boot mode for both, because on a Compute Module they are the
+  same interface; what the module actually has decides which word is true.
 - The agent and the mini OS tell an eMMC from an SD card. Both appear as
   `mmcblk0`, and a Compute Module Lite with a card in the slot was being called
   a module with eMMC. The kernel names the type, and where it does not, the

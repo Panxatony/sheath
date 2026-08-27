@@ -335,6 +335,7 @@ var catalog = map[string]map[Lang]string{
 	"inv.boot":        {LangEN: "Bootloader", LangDE: "Bootloader"},
 	"inv.via.nvme":    {LangEN: "came up from NVMe", LangDE: "kam von NVMe hoch"},
 	"inv.via.network": {LangEN: "came up over the network", LangDE: "kam über das Netz hoch"},
+	"inv.via.emmc":    {LangEN: "came up from eMMC", LangDE: "kam von eMMC hoch"},
 	"inv.via.sd":      {LangEN: "came up from SD", LangDE: "kam von SD hoch"},
 	"inv.via.usb-msd": {LangEN: "came up from USB", LangDE: "kam von USB hoch"},
 	"inv.via.usb-bcm": {LangEN: "came up from USB", LangDE: "kam von USB hoch"},

@@ -151,6 +151,14 @@ func (a *App) inventory(l Lang) ([]invRow, invSummary, error) {
 		}
 		r.VC = str(f, "vc_firmware")
 		if m := str(f, "boot_mode"); m != "" {
+			// The firmware has one boot mode for both card devices, because
+			// on a Compute Module they are the same interface. What the blade
+			// actually has decides which word is true.
+			if m == "sd" {
+				if n, ok := num(f["emmc_bytes"]); ok && n > 0 {
+					m = "emmc"
+				}
+			}
 			r.BootVia = T(l, "inv.via."+m)
 		}
 		if r.Board == "" && r.RAM == "" {
