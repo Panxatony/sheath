@@ -1088,6 +1088,30 @@ answers every ping and refuses every connection: sshd will not start without
 host keys, and the distribution makes them on the first boot — where that step
 did not happen, nothing on the blade says so.
 
+**An image with a GPT does not boot from a card.** Measured on this hardware,
+not deduced: `blade-kb-r1s04` wrote Debian 13 to its eMMC without a single
+error — checksum verified, partition grown, agent installed, `done 100%` — and
+then never came up again. Not a ping, not a DHCP packet, for forty-five
+minutes. The same blade, the same eMMC, the same bootloader build and the same
+boot order (`0xf54162`, whose third step is SD/eMMC) booted DietPi five minutes
+later. The only difference between the two images is in the first kilobyte:
+
+| | Debian 13 (cloud.debian.org raspi) | DietPi |
+|---|---|---|
+| LBA 1 | `EFI PART` — a GPT | empty |
+| MBR entry 1 | FAT32 `0x0c`, no boot flag | FAT32 `0x0c`, boot flag `0x80` |
+| MBR entries 2–3 | `0xEE` protective | Linux `0x83` |
+| from NVMe | boots | — |
+| from eMMC | **does not boot** | boots |
+
+The bootloader reads a GPT from an NVMe — it says which partition it took, in
+`/proc/device-tree/chosen/bootloader/partition` — and does not from the card
+interface. So the centre reads the first kilobyte of every image, through
+whatever it is compressed with, and remembers what it found; `checkTarget`
+refuses a GPT image on an eMMC or a card before the hour of writing rather than
+after it. Debian itself is not the problem: the GPT belongs to the image
+Debian's cloud builder produces, not to the distribution.
+
 A catalogue entry carries more than bytes:
 
 | Field | Meaning |
@@ -1096,6 +1120,7 @@ A catalogue entry carries more than bytes:
 | `os_id` | which distribution the agent should expect |
 | `kernel` | `downstream` or `upstream` — an upstream-kernel image gets no fan or LED telemetry (§7) |
 | `min_disk` | bytes; an image cannot be assigned to a smaller disk |
+| `part_table` | `gpt` or `mbr`, read off the image's own first sector; a GPT image is refused for an eMMC or a card |
 | `verified` | this image has actually booted on a blade |
 | `state`, `note` | `queued`, `working`, `ready` or `error`, with the last line of whatever failed |
 

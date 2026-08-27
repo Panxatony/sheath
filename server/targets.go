@@ -92,6 +92,15 @@ func (a *App) checkTarget(b *Blade) error {
 		return me("err.toosmall", bladeName(b), chosen.Label, human(chosen.Bytes),
 			b.Image, human(min))
 	}
+	// The card interface is the one place where the table on the image
+	// decides whether anything boots afterwards. Refusing here costs a
+	// sentence; finding out costs an hour of writing and a blade that goes
+	// silent without saying anything at all.
+	if chosen.Kind == "emmc" || chosen.Kind == "sd" {
+		if a.imageTable(b.Image) == "gpt" {
+			return me("err.gptoncard", bladeName(b), b.Image, chosen.Label)
+		}
+	}
 	return nil
 }
 

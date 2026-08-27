@@ -372,6 +372,14 @@ var catalog = map[string]map[Lang]string{
 	"err.toosmall": {
 		LangEN: "%s: the %s holds %s, and %s needs %s",
 		LangDE: "%s: Die %s fasst %s, und %s braucht %s"},
+	"err.gptoncard": {
+		LangEN: "%s: %s carries a GPT, and the bootloader reads one from an NVMe but not from the %s. It would write for an hour and then boot from nowhere — measured on this hardware. An image with a plain MBR, DietPi for one, boots from it.",
+		LangDE: "%s: %s trägt eine GPT, und der Bootloader liest sie von einer NVMe, von der %s aber nicht. Es würde eine Stunde lang schreiben und danach von nirgendwo booten — auf dieser Hardware gemessen. Ein Image mit einfachem MBR, etwa DietPi, bootet davon."},
+	"img.gpt": {LangEN: "GPT — no card boot", LangDE: "GPT — kein Kartenboot"},
+	"img.mbr": {LangEN: "MBR", LangDE: "MBR"},
+	"img.gpttip": {
+		LangEN: "The bootloader reads a GPT from an NVMe and not from an eMMC or a card. An image with one is refused for those, before it is written.",
+		LangDE: "Der Bootloader liest eine GPT von einer NVMe, von eMMC oder Karte nicht. Ein Image mit GPT wird für diese abgelehnt, bevor es geschrieben wird."},
 	"tgt.title": {LangEN: "Install to", LangDE: "Installieren auf"},
 	"tgt.set":   {LangEN: "Set", LangDE: "Setzen"},
 	"tgt.saved": {LangEN: "%s will be installed to %s", LangDE: "%s wird auf %s installiert"},

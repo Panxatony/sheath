@@ -181,6 +181,7 @@ var migrations = []string{
 	`ALTER TABLE blades ADD COLUMN probe TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE blades ADD COLUMN probe_sent TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN desired_at TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE images ADD COLUMN part_table TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -304,6 +305,11 @@ type Image struct {
 	Kernel   string `json:"kernel"`   // downstream | upstream | ""
 	MinDisk  int64  `json:"min_disk"` // bytes, 0 = unknown
 	Verified bool   `json:"verified"` // has actually been booted on a blade
+	// gpt | mbr | "" — read off the image's own first sector. A GPT image
+	// writes onto an eMMC perfectly well and then boots from nowhere, because
+	// the bootloader reads a GPT from an NVMe and not from the card
+	// interface.
+	PartTable string `json:"part_table"`
 
 	// How far the preparation has come. An entry somebody typed a URL for is
 	// not yet an image anyone can install, and calling it ready before the
@@ -1078,7 +1084,7 @@ func (a *App) imageExists(id string) bool {
 
 func (a *App) listImages() ([]Image, error) {
 	rows, err := a.db.Query(`SELECT id,url,sha256,seed,os_id,notes,local,bytes,created,
-		kernel,min_disk,verified,state,note,updated FROM images ORDER BY id`)
+		kernel,min_disk,verified,state,note,updated,part_table FROM images ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1089,7 +1095,8 @@ func (a *App) listImages() ([]Image, error) {
 		var verified int
 		if err := rows.Scan(&i.ID, &i.URL, &i.SHA256, &i.Seed, &i.OSID,
 			&i.Notes, &i.Local, &i.Bytes, &i.Created,
-			&i.Kernel, &i.MinDisk, &verified, &i.State, &i.Note, &i.Updated); err != nil {
+			&i.Kernel, &i.MinDisk, &verified, &i.State, &i.Note, &i.Updated,
+			&i.PartTable); err != nil {
 			return nil, err
 		}
 		i.Verified = verified != 0

@@ -3379,6 +3379,8 @@ type imageRow struct {
 	LED      string // ok | warn | bad | ""
 	Note     string
 	Kern     string
+	Table    string // what the first sector says: GPT or MBR
+	TableBad bool   // a GPT, which no card will boot
 	InUse    int
 	Recipe   string
 	Blocking bool // being worked on: cannot be removed
@@ -3426,6 +3428,12 @@ func (a *App) hImagesPage(w http.ResponseWriter, r *http.Request) {
 			row.Kern = T(l, "img.k.down")
 		case "upstream":
 			row.Kern = T(l, "img.k.up")
+		}
+		switch a.imageTable(im.ID) {
+		case "gpt":
+			row.Table, row.TableBad = T(l, "img.gpt"), true
+		case "mbr":
+			row.Table = T(l, "img.mbr")
 		}
 		if rec, ok := matchRecipe(im.ID, im.URL); ok {
 			row.Recipe = rec.Name
@@ -3512,7 +3520,8 @@ var imagesTmpl = template.Must(template.New("images").Funcs(tmplFuncs).Parse(hea
           {{if .Note}}<div class="hint">{{.Note}}</div>{{end}}</td>
         <td class="num">{{.Size}}
           {{if .InUse}}<div class="hint">{{.InUse}} {{t $.L "img.blades"}}</div>{{end}}</td>
-        <td>{{if .Kern}}<span class="hint">{{.Kern}}</span>{{end}}</td>
+        <td>{{if .Kern}}<span class="hint">{{.Kern}}</span>{{end}}
+          {{if .Table}}<div>{{if .TableBad}}<span class="chip warn" title="{{t $.L "img.gpttip"}}">{{.Table}}</span>{{else}}<span class="hint">{{.Table}}</span>{{end}}</div>{{end}}</td>
         <td class="right">
           {{if not .Blocking}}
           <form method="post" action="/images/{{.ID}}/remove"
