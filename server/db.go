@@ -179,6 +179,8 @@ var migrations = []string{
 	`ALTER TABLE sites ADD COLUMN lease TEXT NOT NULL DEFAULT '1h'`,
 	`ALTER TABLE sites ADD COLUMN enroll_until TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE blades ADD COLUMN probe TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE blades ADD COLUMN probe_sent TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN desired_at TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -950,13 +952,67 @@ func (a *App) requestProbe(serial string) error {
 	if _, err := a.db.Exec(`UPDATE blades SET probe=? WHERE serial=?`, now(), serial); err != nil {
 		return err
 	}
-	// The tag has to be on the wire before the blade asks for an address.
+	_, _ = a.db.Exec(`UPDATE blades SET probe_sent='' WHERE serial=?`, serial)
+	// The tag has to be on the wire before the blade is told to restart, and
+	// telling it in the same breath is a race it loses about half the time:
+	// the site fetches every thirty seconds, the agent takes its command
+	// within sixty, and the blade that gets there first boots from its own
+	// disk and nothing happens. So the restart waits for probeStep, which
+	// sends it once the site has actually taken the new state.
 	_, _ = a.syncDHCP()
-	if err := a.queueCommand(serial, "reboot"); err != nil {
-		return err
-	}
-	a.logEvent(serial, "info", "firmware read requested — this blade restarts into the mini OS once")
+	a.logEvent(serial, "info", "firmware read requested — restarts once the site has the netboot tag")
 	return nil
+}
+
+// probeStep sends the restart to a blade whose netboot tag has arrived where
+// it has to be. A site fetches the whole desired state only when it changed —
+// and arming a blade changes it — so a fetch stamped later than the arming is
+// proof the site has the tag, not a guess about how long that takes.
+//
+// Where no site owns the wire the centre writes the reservation itself and
+// there is nothing to wait for; a arming that has stood for a minute is then
+// sent regardless.
+func (a *App) probeStep() {
+	rows, err := a.db.Query(`SELECT serial FROM blades WHERE probe<>'' AND probe_sent=''`)
+	if err != nil {
+		return
+	}
+	var serials []string
+	for rows.Next() {
+		var s string
+		if rows.Scan(&s) == nil {
+			serials = append(serials, s)
+		}
+	}
+	rows.Close()
+
+	for _, serial := range serials {
+		b, err := a.getBlade(serial)
+		if err != nil {
+			continue
+		}
+		if !probeArmed(b) {
+			a.clearProbe(serial)
+			a.logEvent(serial, "warn", "firmware read expired — the blade never came up in the mini OS")
+			continue
+		}
+		var fetched string
+		_ = a.db.QueryRow(`SELECT desired_at FROM sites WHERE id=?`, b.SiteID).Scan(&fetched)
+		ready := fetched > b.Probe
+		if !ready && fetched == "" {
+			if t, err := time.Parse(time.RFC3339, b.Probe); err == nil && time.Since(t) > time.Minute {
+				ready = true
+			}
+		}
+		if !ready {
+			continue
+		}
+		if err := a.queueCommand(serial, "reboot"); err != nil {
+			continue
+		}
+		_, _ = a.db.Exec(`UPDATE blades SET probe_sent=? WHERE serial=?`, now(), serial)
+		a.logEvent(serial, "info", "the netboot tag is on the wire — restarting to read the firmware")
+	}
 }
 
 // probeArmed says whether the arming still stands. Deliberately a reading of
@@ -974,7 +1030,7 @@ func probeArmed(b *Blade) bool {
 // clearProbe is called when the blade has answered — it has said what it is,
 // and the next start belongs to its own system again.
 func (a *App) clearProbe(serial string) {
-	_, _ = a.db.Exec(`UPDATE blades SET probe='' WHERE serial=?`, serial)
+	_, _ = a.db.Exec(`UPDATE blades SET probe='',probe_sent='' WHERE serial=?`, serial)
 	_, _ = a.syncDHCP()
 }
 

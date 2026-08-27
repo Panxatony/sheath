@@ -331,6 +331,9 @@ func (a *App) hSiteDesired(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.touchSite(id)
+	// A full body means this site did not have this state before. That is the
+	// moment a netboot tag reaches the wire, and probeStep waits for it.
+	_, _ = a.db.Exec(`UPDATE sites SET desired_at=? WHERE id=?`, now(), id)
 	w.Header().Set("ETag", d.Version)
 	writeJSON(w, 200, d)
 }

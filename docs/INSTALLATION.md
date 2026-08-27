@@ -896,8 +896,14 @@ The mini OS can, on every netboot; but a blade in a slot is not offered netboot
 once it is installed, and rightly so, or it would never start its own system.
 
 So there is **Read the firmware** on the blade: it arms that one blade for one
-netboot, tells it to restart, and takes the tag off again the moment the mini
-OS reports what it found. The mini OS then sees a system on the disk, nothing
+netboot and takes the tag off again the moment the mini OS reports what it
+found. The restart is not sent in the same breath — that is a race the arming
+loses about half the time, because a site fetches every thirty seconds while
+the agent takes its command within sixty, and whichever gets there first
+decides. Instead the centre waits until the site has actually taken the new
+state: a site fetches the whole desired state only when it changed, and arming
+a blade changes it, so a fetch stamped after the arming is proof rather than a
+guess. The mini OS then sees a system on the disk, nothing
 to do, and restarts into it by itself after a minute — which is also long
 enough for the tag to have gone. Two restarts, nothing written. An arming that
 is not taken up within thirty minutes expires, so a blade that was switched off

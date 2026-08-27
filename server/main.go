@@ -249,6 +249,7 @@ func main() {
 
 	// Mark blades that have not checked in for a while as offline.
 	go app.reaper()
+	go app.probes()
 	go app.runBackups()
 	go app.watchHealth()
 	// Tail dnsmasq: that is how Sheath sees a blade netbooting, before any
@@ -282,6 +283,15 @@ func main() {
 
 // reaper marks blades without a heartbeat as offline. The threshold is
 // deliberately generous: a reboot must not read as a failure.
+// probes carries the second half of a firmware reading: a blade may only be
+// told to restart once its netboot tag has reached the wire.
+func (a *App) probes() {
+	for {
+		time.Sleep(10 * time.Second)
+		a.probeStep()
+	}
+}
+
 func (a *App) reaper() {
 	for {
 		time.Sleep(30 * time.Second)
