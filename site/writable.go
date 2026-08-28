@@ -21,6 +21,20 @@ import (
 // fine and is not. So this is asked once a pass, and the answer travels with
 // the heartbeat.
 
+// trouble is everything this site knows to be wrong with itself, in one
+// sentence, or "" when it is well. Two things so far, and they have the same
+// shape: both are invisible from everything else a site reports, and both
+// were found the hard way.
+func (s *site) trouble() string {
+	var bad []string
+	for _, t := range []string{s.writeTrouble(), s.dhcpTrouble()} {
+		if t != "" {
+			bad = append(bad, t)
+		}
+	}
+	return strings.Join(bad, "; ")
+}
+
 // writeTrouble names the directories that refuse a write, or "" when all of
 // them take one.
 //

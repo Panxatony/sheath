@@ -101,7 +101,7 @@ func (r *relay) routes() *http.ServeMux {
 			"queued":  r.queuedCount(),
 			// For whatever watches from outside. A site can answer every
 			// question here and still be unable to write a byte.
-			"trouble": r.s.writeTrouble(),
+			"trouble": r.s.trouble(),
 		})
 	})
 	return mux

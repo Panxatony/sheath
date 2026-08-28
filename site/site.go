@@ -313,7 +313,7 @@ func (s *site) report(d *desired) {
 		// Empty when every directory this site writes to would take a write.
 		// Reading works long after writing has stopped, and everything else
 		// in this report is reading.
-		"trouble": s.writeTrouble(),
+		"trouble": s.trouble(),
 		"stock":   s.stockHeld(),
 		"payload": s.payloadHeld(),
 		// Where the blades of this site should report. Only this machine

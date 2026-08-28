@@ -500,6 +500,25 @@ because they were pretending not to be:
   the wrong address moves itself, but only to one that answers a health check
   first.
 
+### A site that is not serving DHCP says so
+
+dnsmasq died at one site during a reload — it had just been handed a new
+reservation — and stayed dead for twenty-five minutes. sheath-site went on
+writing reservations and sending reloads into a unit that was not there:
+`Unit cannot be reloaded because it is inactive`, three times, into a log
+nobody reads. The centre showed the site as online the whole time, because
+everything it reports was still true.
+
+So each pass asks whether anything is listening on UDP 67 — the question a
+blade asks, rather than "is the unit active", because a unit can be active and
+serve nothing. Where nothing answers and the machine has a dnsmasq unit, the
+site starts it and checks the port again; a site that can put itself right
+should not wait for a person. What is left after that travels with the
+heartbeat as trouble, next to the write check, and the site goes red.
+
+A machine with no dnsmasq unit at all is a site that does not do DHCP here,
+and that is not a fault.
+
 ### A site that cannot write says so
 
 The disk holding `/srv/sheath` at one site lost its capacity: the kernel saw
