@@ -22,4 +22,8 @@
     - { path: "{{ sheath_root }}" }
     - { path: "{{ sheath_images_dir }}" }
     - { path: "{{ sheath_tftp_dir }}" }
+    # The binaries a blade installs — the agent among them. sheath-site
+    # creates it on its first pass anyway; having it here means the ownership
+    # is right from the start rather than after the first fetch.
+    - { path: "{{ sheath_agent_dir }}" }
     - { path: "{{ sheath_logs_dir }}" }

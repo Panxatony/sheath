@@ -68,6 +68,15 @@
   # string is not a condition — Ansible refuses it, and rightly.
   when: sheath_site_dhcp | bool
   block:
+    # A machine that was just reinstalled has an index from whenever its
+    # image was built, and Debian drops superseded packages out of the pool:
+    # the install then fails with a 404 for a version that no longer exists.
+    - name: A package index younger than the last release
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_pkg_mgr == "apt"
+
     - name: Installed
       ansible.builtin.package:
         name: dnsmasq
@@ -115,6 +124,10 @@
     state: started
     enabled: true
     daemon_reload: true
+  # On a machine that has never had Sheath on it the unit file was not written
+  # in a dry run either, so there is nothing to ask about — and asking fails
+  # the whole run, which is the one thing a dry run must not do.
+  when: not ansible_check_mode
 
 - name: Everything that is pending, now, so the check below sees the truth
   ansible.builtin.meta: flush_handlers
@@ -127,8 +140,8 @@
   retries: 10
   delay: 2
   until: relay is succeeded
-  # Nothing was applied in a dry run, so waiting for it would prove nothing.
-  when: not ansible_check_mode
+  # Nothing was applied in a dry run, so waiting for it would prove nothing;
+  # and a site that serves no relay has nothing to wait for either.
   when: not ansible_check_mode and sheath_site_listen | length > 0
 
 - name: What this site says about itself

@@ -4,6 +4,10 @@
     name: sheath-site
     state: restarted
     daemon_reload: true
+  # A dry run wrote no unit file, so there is nothing to restart — and asking
+  # systemd about a unit that is not there fails the whole run, which is the
+  # one thing a dry run must not do.
+  when: not ansible_check_mode
 
 # Restart, not reload. SIGHUP makes dnsmasq re-read /etc/hosts and the
 # reservation directory and nothing else — the configuration file itself is
