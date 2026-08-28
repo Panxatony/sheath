@@ -116,6 +116,11 @@ func (a *App) imageTable(id string) string {
 	if stored != "" || local == "" {
 		return stored
 	}
+	// The catalogue keeps the file name, not the path: everything else that
+	// touches an image serves it out of the images directory.
+	if !filepath.IsAbs(local) {
+		local = filepath.Join(a.imagesDir, local)
+	}
 	head, err := readImageHead(local)
 	if err != nil {
 		return ""

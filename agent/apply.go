@@ -826,6 +826,22 @@ func delayedReboot(after time.Duration) {
 	}
 }
 
+// delayedHalt stops the machine for good. There is no power control in a
+// BladeRunner, so this is the one command whose effect nobody can undo from
+// here — the blade comes back when a hand or a socket brings it back.
+//
+// Both spellings are tried: `systemctl poweroff` is the right one on a system
+// with systemd running, and there are enough images where the bus is not
+// reachable at the moment it is asked. Whichever works, works.
+func delayedHalt(after time.Duration) {
+	time.Sleep(after)
+	if err := exec.Command("systemctl", "poweroff").Run(); err != nil {
+		if err := exec.Command("poweroff").Run(); err != nil {
+			_ = exec.Command("shutdown", "-h", "now").Run()
+		}
+	}
+}
+
 // ── Odds and ends ────────────────────────────────────────────────────
 
 func stringList(v any) []string {

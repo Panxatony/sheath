@@ -463,6 +463,11 @@ func (a *agent) runCommands() error {
 		case "reboot":
 			log.Printf("  rebooting in 5 s")
 			go delayedReboot(5 * time.Second)
+		case "shutdown":
+			// Reported before it happens rather than after: after, there is
+			// nothing left to report with.
+			log.Printf("  shutting down in 5 s — nothing here can switch it on again")
+			go delayedHalt(5 * time.Second)
 		case "reimage":
 			// The server has already unlocked netboot; a reboot is enough for
 			// the blade to land in the installer.
@@ -506,6 +511,9 @@ func rank(kind string) int {
 		return 8
 	case "reboot":
 		return 9
+	// Last of all: after this one nothing else in the batch would run.
+	case "shutdown":
+		return 10
 	}
 	return 5
 }

@@ -81,6 +81,7 @@ without a netboot installer, multi-distro would be ten times the manual work; wi
 | Install target | NVMe, eMMC or a card | Chosen per blade from the devices it reported; the default is the NVMe where there is one and the single device where there is only one |
 | Way in | `sshd` present, running, listening on 22, host keys counted | The agent reports it and the inventory shows it; the installer switches the unit on while it has the filesystem mounted |
 | Partition table of an image | `gpt` or `mbr`, read off its first sector | A GPT image boots from an NVMe and from no card; it is refused for an eMMC or an SD before it is written |
+| Shut down | `shutdown` command to the agent | Halts the blade for good; nothing in Sheath can switch it on again — a BladeRunner has no power control (issue #12) |
 | Read the firmware | arms one blade for one netboot | For a blade whose running system cannot reach the firmware: the tag goes on, the blade restarts into the mini OS, says what it is, and restarts into its own system — nothing is written |
 | Boot order in the inventory | read out through the firmware | The mini OS reads it on every netboot, the agent wherever `vcgencmd` is installed; a blade whose order does not name its install target is flagged |
 

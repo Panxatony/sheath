@@ -714,9 +714,9 @@ func (a *App) hBladeDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 	serial, kind := r.PathValue("serial"), r.PathValue("kind")
 	switch kind {
-	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel", "probe":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "shutdown", "reimage", "cancel", "probe":
 	default:
-		fail(w, 400, "unknown action %q (identify|identify_off|stealth_on|stealth_off|reboot|reimage|cancel|probe)", kind)
+		fail(w, 400, "unknown action %q (identify|identify_off|stealth_on|stealth_off|reboot|shutdown|reimage|cancel|probe)", kind)
 		return
 	}
 	if _, err := a.getBlade(serial); err != nil {

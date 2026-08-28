@@ -1110,7 +1110,7 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch kind {
-	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "reimage", "cancel", "probe":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "shutdown", "reimage", "cancel", "probe":
 	default:
 		redirectMsg(w, r, to, "err", T(l, "err.unknownact"))
 		return
@@ -1154,6 +1154,12 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.logEvent(serial, "info", "command queued: "+kind)
+	if kind == "shutdown" {
+		// Worth its own sentence: every other action here ends with the blade
+		// still there.
+		redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "msg.halting"), bladeName(b)))
+		return
+	}
 	redirectMsg(w, r, to, "msg", T(l, "msg.queued", kind))
 }
 
@@ -2158,6 +2164,9 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   {{end}}
                   <form method="post" action="/blades/{{.Serial}}/actions/reboot">
                     <button class="mini ghost" type="submit">{{t $top.L "act.reboot"}}</button></form>
+                  <form method="post" action="/blades/{{.Serial}}/actions/shutdown"
+                        onsubmit="return confirm('{{printf (t $top.L "act.haltask") (or .Hostname .Serial)}}')">
+                    <button class="mini danger" type="submit" title="{{t $top.L "act.halttip"}}">{{t $top.L "act.halt"}}</button></form>
                 </div>
                 <div class="menu-row">
                   {{if .Stealthy}}
