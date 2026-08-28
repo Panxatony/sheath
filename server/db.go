@@ -988,6 +988,10 @@ func (a *App) requestShutdown(serial string) error {
 		return err
 	}
 	_, _ = a.db.Exec(`UPDATE blades SET halted=? WHERE serial=?`, now(), serial)
+	// Any alert standing against it belongs to the world before this
+	// decision. Left open it would also produce a "recovered" mail when the
+	// blade comes back, for a failure that never happened.
+	_ = a.clearAlert(serial)
 	a.logEvent(serial, "info", "shutdown requested — this blade is off, not gone")
 	return nil
 }
