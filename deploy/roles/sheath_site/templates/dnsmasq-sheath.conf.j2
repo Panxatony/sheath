@@ -5,7 +5,14 @@
 # picks new and changed ones up by itself.
 
 interface={{ sheath_site_interface }}
-bind-interfaces
+# bind-dynamic, not bind-interfaces. Both listen only where they are told;
+# the difference is what happens when the interface is not there yet.
+# bind-interfaces resolves the name once at startup and refuses to start
+# without it — "unknown interface eth0", exit 2 — which is what a site server
+# does on every boot where the address arrives a moment after the daemon.
+# It came up without DHCP and nothing said so. bind-dynamic waits for the
+# interface and picks up addresses as they appear.
+bind-dynamic
 except-interface=lo
 
 # ── DNS ──
