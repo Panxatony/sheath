@@ -1267,7 +1267,16 @@ func (c *client) seedCloudInit(job *provisionResp, target string) error {
 	if job.Hostname != "" {
 		fmt.Fprintf(&b, "hostname: %s\nmanage_etc_hosts: true\n", job.Hostname)
 	}
-	b.WriteString("ssh_pwauth: false\nusers:\n  - default\n")
+	// disable_root: false, and it is not a detail. cloud-init's default is to
+	// take the keys it is given, put them on the default user, and rewrite
+	// root's authorized_keys with its own forced command — the one that
+	// answers "Please login as the user \"pi\" rather than the user \"root\"."
+	// and closes the connection. Which is exactly what happened: the keys
+	// this installer had just placed for root were still in the file, with
+	// that command in front of them, and a blade nobody could open.
+	//
+	// Sheath's way in is root with a key. Saying so here is the whole fix.
+	b.WriteString("disable_root: false\nssh_pwauth: false\nusers:\n  - default\n")
 	if len(job.SSHKeys) > 0 {
 		b.WriteString("ssh_authorized_keys:\n")
 		for _, k := range job.SSHKeys {
