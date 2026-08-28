@@ -32,10 +32,18 @@ func sshAccess() map[string]any {
 	return out
 }
 
+// OpenSSH is not the only answer to "is there an SSH server". DietPi ships
+// dropbear, which serves port 22 perfectly well and is not called sshd — and
+// a blade running it was reported as having no SSH server at all while it was
+// answering connections.
+var sshServers = []string{"sshd", "dropbear"}
+
 func sshdInstalled() bool {
-	for _, p := range []string{"/usr/sbin/sshd", "/sbin/sshd", "/usr/bin/sshd"} {
-		if _, err := os.Stat(p); err == nil {
-			return true
+	for _, dir := range []string{"/usr/sbin", "/sbin", "/usr/bin", "/bin"} {
+		for _, name := range sshServers {
+			if _, err := os.Stat(dir + "/" + name); err == nil {
+				return true
+			}
 		}
 	}
 	return false
@@ -52,8 +60,11 @@ func sshdRunning() bool {
 		if !e.IsDir() || e.Name()[0] < '0' || e.Name()[0] > '9' {
 			continue
 		}
-		if strings.TrimSpace(readFileStr("/proc/"+e.Name()+"/comm")) == "sshd" {
-			return true
+		comm := strings.TrimSpace(readFileStr("/proc/" + e.Name() + "/comm"))
+		for _, name := range sshServers {
+			if comm == name {
+				return true
+			}
 		}
 	}
 	return false
@@ -85,10 +96,11 @@ func hex4(n int) string {
 		digits[(n>>12)&0xf], digits[(n>>8)&0xf], digits[(n>>4)&0xf], digits[n&0xf]})
 }
 
-// hostKeys counts what sshd needs before it will start at all. On a fresh
+// hostKeys counts what OpenSSH needs before it will start at all. On a fresh
 // image there are none: the distribution makes them on the first boot, and
 // where that step did not happen the service fails and the blade is shut.
-// -1 means there is no /etc/ssh to look in.
+// -1 means there is no /etc/ssh to look in — which is also what a dropbear
+// system looks like, since it keeps its keys elsewhere.
 func hostKeys() int {
 	entries, err := os.ReadDir("/etc/ssh")
 	if err != nil {

@@ -185,6 +185,16 @@ var recipes = []recipe{
 		Note: "v10 Trixie supported. Configures itself at first boot — apt in a chroot would run before that and confuse it, so nothing is installed here.",
 	},
 	{
+		// Debian underneath — /etc/os-release says trixie — but built by
+		// Raspberry Pi, and that is the whole point of it here: a plain MBR,
+		// so it boots from a card and an eMMC as well as from an NVMe, and
+		// the downstream kernel, so the overlays apply and vcgencmd is there.
+		Name: "Raspberry Pi OS Lite (arm64)", Match: []string{"raspios"},
+		OSID: "debian", Kernel: "downstream", MinDisk: 4 << 30,
+		IDHint: "raspios-trixie-arm64",
+		Note:   "Debian Trixie with the Raspberry Pi kernel: the fan and the LEDs report, and the boot order can be read without the mini OS. A plain MBR, so it boots from every device a blade has. sshd is on board but switched off — the installer enables the unit.",
+	},
+	{
 		Name: "Debian 13 Trixie (arm64)", Match: []string{"debian", "13"},
 		OSID: "debian", Kernel: "upstream", MinDisk: 8 << 30,
 		Packages: []string{"openssh-server"},
