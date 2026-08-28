@@ -1093,6 +1093,14 @@ func (a *App) hUIBladeImage(w http.ResponseWriter, r *http.Request) {
 		redirectMsg(w, r, to, "msg", T(l, "msg.imagecleared"))
 		return
 	}
+	// The choice is kept — it may well be made before the device is — but
+	// saying nothing until somebody presses "Install now" is how an evening
+	// gets spent on a blade that wrote for an hour and booted from nowhere.
+	b, _ = a.getBlade(serial)
+	if err := a.checkTarget(b); err != nil {
+		redirectMsg(w, r, to, "err", fmt.Sprintf(T(l, "msg.imagesetbut"), img, errText(l, err)))
+		return
+	}
 	redirectMsg(w, r, to, "msg", T(l, "msg.imageset", img))
 }
 
@@ -1493,6 +1501,7 @@ var tmplFuncs = template.FuncMap{
 	// reported it, and the network the centre sits on — which is what stood
 	// there — is on the sites page and needed no repeating.
 	"ver":       func() string { return version },
+	"upper":     strings.ToUpper,
 	"otherLang": otherLang,
 	"langName":  langName,
 	"hsize":     human,
@@ -2157,7 +2166,7 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   {{$img := .Image}}
                   <select id="img{{.Slot}}" name="image">
                     <option value="">{{t $top.L "rk.none"}}</option>
-                    {{range $top.Images}}<option value="{{.ID}}"{{if eq .ID $img}} selected{{end}}>{{.ID}}{{if .Kernel}} · {{.Kernel}}{{end}}</option>{{end}}
+                    {{range $top.Images}}<option value="{{.ID}}"{{if eq .ID $img}} selected{{end}}>{{.ID}}{{if .Kernel}} · {{.Kernel}}{{end}}{{if .PartTable}} · {{upper .PartTable}}{{end}}</option>{{end}}
                   </select>
                   <button class="mini ghost" type="submit">{{t $top.L "rk.set"}}</button>
                 </form>
@@ -3876,6 +3885,14 @@ func (a *App) hUIBladeTarget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.logEvent(serial, "info", "install target set to "+target)
+	// Same as choosing the image, from the other end: the pair has to work,
+	// and whichever half was chosen last is the moment to say so.
+	b, _ = a.getBlade(serial)
+	if err := a.checkTarget(b); err != nil {
+		redirectMsg(w, r, to, "err", fmt.Sprintf(T(l, "msg.targetsetbut"),
+			bladeName(b), target, errText(l, err)))
+		return
+	}
 	redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "tgt.saved"), b.Hostname, target))
 }
 
