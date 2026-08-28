@@ -1115,6 +1115,14 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		redirectMsg(w, r, to, "err", T(l, "err.unknownact"))
 		return
 	}
+	if kind == "shutdown" {
+		if err := a.requestShutdown(serial); err != nil {
+			redirectMsg(w, r, to, "err", errText(l, err))
+			return
+		}
+		redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "msg.halting"), bladeName(b)))
+		return
+	}
 	if kind == "probe" {
 		if err := a.requestProbe(serial); err != nil {
 			redirectMsg(w, r, to, "err", errText(l, err))
@@ -1154,12 +1162,6 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.logEvent(serial, "info", "command queued: "+kind)
-	if kind == "shutdown" {
-		// Worth its own sentence: every other action here ends with the blade
-		// still there.
-		redirectMsg(w, r, to, "msg", fmt.Sprintf(T(l, "msg.halting"), bladeName(b)))
-		return
-	}
 	redirectMsg(w, r, to, "msg", T(l, "msg.queued", kind))
 }
 
@@ -1231,6 +1233,11 @@ func (a *App) rowStatus(b *Blade, lvl healthLevel) (key, led, arg string) {
 		case stageInstaller, stageRamdisk:
 			return "st.installer", "id", ""
 		}
+	}
+	// Switched off on purpose. "Offline" would be true and useless: it is the
+	// same word the interface uses for a blade whose power supply died.
+	if b.Halted != "" {
+		return "st.halted", "off", ""
 	}
 	// Armed to come up in the mini OS once so its firmware can be read. It is
 	// a state somebody switched on and will want to see the end of, and while

@@ -182,6 +182,7 @@ var migrations = []string{
 	`ALTER TABLE blades ADD COLUMN probe_sent TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN desired_at TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN part_table TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE blades ADD COLUMN halted TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -276,6 +277,10 @@ type Blade struct {
 	// Set while this blade is meant to come up in the mini OS once, so the
 	// firmware can be read out of it. Empty the rest of the time.
 	Probe string `json:"probe"`
+	// When somebody switched this blade off through Sheath. A blade doing
+	// what it was told is not a blade that failed, and the difference is
+	// invisible from the outside: both stop answering.
+	Halted string `json:"halted"`
 
 	// derived, not stored
 	IP       string `json:"ip"`
@@ -970,6 +975,23 @@ func (a *App) requestProbe(serial string) error {
 	return nil
 }
 
+// requestShutdown stops a blade and remembers that it was asked for. Without
+// the second half the health watch treats it exactly like a blade whose power
+// supply died: critical, and a notification ten minutes later about a blade
+// doing what it was told.
+//
+// Only a shutdown through Sheath can be known. A blade somebody unplugs is
+// indistinguishable from one that failed, and stays an alert — which is
+// right.
+func (a *App) requestShutdown(serial string) error {
+	if err := a.queueCommand(serial, "shutdown"); err != nil {
+		return err
+	}
+	_, _ = a.db.Exec(`UPDATE blades SET halted=? WHERE serial=?`, now(), serial)
+	a.logEvent(serial, "info", "shutdown requested — this blade is off, not gone")
+	return nil
+}
+
 // probeStep sends the restart to a blade whose netboot tag has arrived where
 // it has to be. A site fetches the whole desired state only when it changed —
 // and arming a blade changes it — so a fetch stamped later than the arming is
@@ -1210,14 +1232,15 @@ func (a *App) settingInt(key string, def int) int {
 // ── Blades ───────────────────────────────────────────────────────────
 
 const bladeCols = `serial,short_serial,rack_id,slot,hostname,mac,image,variant,state,
-	groups_json,facts_json,health_json,install_state,installed_at,config_applied,last_seen,created,probe`
+	groups_json,facts_json,health_json,install_state,installed_at,config_applied,last_seen,created,probe,halted`
 
 func (a *App) scanBlade(sc interface{ Scan(...any) error }) (*Blade, error) {
 	var b Blade
 	var groups, facts, health string
 	err := sc.Scan(&b.Serial, &b.ShortSerial, &b.RackID, &b.Slot, &b.Hostname, &b.MAC,
 		&b.Image, &b.Variant, &b.State, &groups, &facts, &health,
-		&b.InstallState, &b.InstalledAt, &b.ConfigApp, &b.LastSeen, &b.Created, &b.Probe)
+		&b.InstallState, &b.InstalledAt, &b.ConfigApp, &b.LastSeen, &b.Created, &b.Probe,
+		&b.Halted)
 	if err != nil {
 		return nil, err
 	}

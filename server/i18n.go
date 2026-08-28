@@ -335,7 +335,8 @@ var catalog = map[string]map[Lang]string{
 	"err.probebusy": {
 		LangEN: "this blade is already set to come up in the mini OS — an installation is armed for it",
 		LangDE: "Dieses Blade startet ohnehin schon ins Mini-OS — für es ist eine Installation scharf"},
-	"act.halt": {LangEN: "Shut down", LangDE: "Herunterfahren"},
+	"st.halted": {LangEN: "switched off", LangDE: "ausgeschaltet"},
+	"act.halt":  {LangEN: "Shut down", LangDE: "Herunterfahren"},
 	"act.halttip": {
 		LangEN: "Stops the blade for good. Nothing here can switch it on again — a BladeRunner has no power control, so it takes a hand or a socket.",
 		LangDE: "Hält das Blade endgültig an. Von hier kann es nichts wieder einschalten — ein BladeRunner hat keine Stromsteuerung, es braucht eine Hand oder eine Steckdose."},

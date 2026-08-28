@@ -436,6 +436,13 @@ func evalHealthWith(b *Blade, p Policy) (healthLevel, []error) {
 	if len(b.Health) > 0 {
 		_ = json.Unmarshal(b.Health, &h)
 	}
+	// Switched off on purpose. It is not answering because it was told not
+	// to, and hUnknown is what the watch already understands as "nothing to
+	// say about this one" — the same treatment a blade gets before it has
+	// ever reported.
+	if b.Halted != "" {
+		return hUnknown, nil
+	}
 	if b.State == "offline" {
 		return hCrit, []error{me("health.nohb")}
 	}

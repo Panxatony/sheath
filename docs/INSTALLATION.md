@@ -888,6 +888,16 @@ ramdisk, removes the imager along with Qt, the QML plugins, the graphics
 drivers, maps, icons and fonts (57 MB a headless blade has no use for), and
 puts `installer/init` and the freshly built installer in.
 
+**Off is not gone.** A blade shut down through Sheath is remembered as such:
+`state='offline'` alone is judged critical, because a blade that stops
+answering usually means something broke — but one that was told to stop is
+doing as it was told. So the health watch raises nothing for it, the status
+column says "switched off" rather than "offline", and the mark is cleared the
+moment an agent reports again, so a blade that came back on its own is not
+carried as off for the rest of its life. Only a shutdown through Sheath can be
+known this way: a blade somebody unplugs is indistinguishable from one that
+failed, and stays an alert.
+
 **Reading the firmware of a blade that is already running.** The boot order
 lives in the EEPROM, and a running system often cannot reach it: an upstream
 kernel builds no mailbox device, so `/dev/vcio_gencmd` does not exist and

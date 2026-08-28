@@ -733,6 +733,14 @@ func (a *App) hBladeAction(w http.ResponseWriter, r *http.Request) {
 	// has not started yet, and the point is that it never will.
 	// Arming is a change here and a restart there, so it queues its own
 	// command rather than falling through to the generic one below.
+	if kind == "shutdown" {
+		if err := a.requestShutdown(serial); err != nil {
+			fail(w, 500, "%v", err)
+			return
+		}
+		writeJSON(w, 202, map[string]string{"halting": serial})
+		return
+	}
 	if kind == "probe" {
 		if err := a.requestProbe(serial); err != nil {
 			fail(w, 409, "%v", err)
@@ -855,8 +863,12 @@ func (a *App) hBladeStatus(w http.ResponseWriter, r *http.Request) {
 	// If an agent checks in, the blade is online — whatever state it was in
 	// before. Only "provisioning" stands: there the installer reports, not the
 	// agent, and a heartbeat must not be read as the install having finished.
+	// An agent that reports is a blade that is on, whether or not anybody
+	// switched it off earlier. Clearing it here rather than on the way up
+	// means a blade that came back by itself is not carried as "off" for the
+	// rest of its life.
 	_, err := a.db.Exec(`UPDATE blades SET facts_json=?,health_json=?,config_applied=?,
-		last_seen=?,state=CASE WHEN state='provisioning' THEN state ELSE 'online' END
+		last_seen=?,halted='',state=CASE WHEN state='provisioning' THEN state ELSE 'online' END
 		WHERE serial=?`, facts, health, in.ConfigApplied, now(), serial)
 	if err != nil {
 		fail(w, 500, "%v", err)
