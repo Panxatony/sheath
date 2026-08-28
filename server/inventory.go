@@ -160,14 +160,32 @@ func (a *App) inventory(l Lang) ([]invRow, invSummary, error) {
 		if n, ok := num(f["cpu_mhz"]); ok && n > 0 {
 			r.MHz = fmt.Sprintf("%.0f MHz", n)
 		}
-		if n, ok := num(f["emmc_bytes"]); ok {
-			if n > 0 {
-				r.EMMC = T(l, "inv.emmc") + " " + human(int64(n))
-			} else {
-				// A Lite has no eMMC at all, and saying "eMMC: no eMMC" is
-				// how a table starts sounding like a form.
-				r.EMMC = T(l, "inv.lite")
+		// What sits on the card interface. A soldered eMMC and a card in the
+		// slot are the same interface and the same digit in BOOT_ORDER, which
+		// is why they were run together for a while — and why two blades with
+		// a 64 GB and a 32 GB microSD in them read as "Lite (no eMMC)" while
+		// the card they were installed on was invisible. They are told apart
+		// where the kernel tells them apart, and the part name is shown for
+		// the same reason it is shown for an NVMe: a card that is wearing out
+		// is a part somebody has to go and find.
+		emmc, hasEMMC := num(f["emmc_bytes"])
+		sd, hasSD := num(f["sd_bytes"])
+		switch {
+		case hasEMMC && emmc > 0:
+			r.EMMC = T(l, "inv.emmc") + " " + human(int64(emmc))
+			if m := str(f, "emmc_model"); m != "" {
+				r.EMMC += " · " + m
 			}
+		case hasSD && sd > 0:
+			r.EMMC = T(l, "inv.sd") + " " + human(int64(sd))
+			if m := str(f, "mmc_model"); m != "" {
+				r.EMMC += " · " + m
+			}
+		case hasEMMC || hasSD || str(f, "mmc_kind") != "":
+			// It said something about the interface, and what it said was
+			// "nothing here" — which is a Lite with an empty slot, or a
+			// module whose eMMC has stopped answering.
+			r.EMMC = T(l, "inv.nocard")
 		}
 		if n, ok := num(f["nvme_bytes"]); ok && n > 0 {
 			r.NVMe = human(int64(n))

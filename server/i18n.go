@@ -325,6 +325,8 @@ var catalog = map[string]map[Lang]string{
 	"inv.emmc":    {LangEN: "eMMC", LangDE: "eMMC"},
 	"inv.nvme":    {LangEN: "NVMe", LangDE: "NVMe"},
 	"inv.lite":    {LangEN: "Lite (no eMMC)", LangDE: "Lite (kein eMMC)"},
+	"inv.sd":      {LangEN: "SD", LangDE: "SD"},
+	"inv.nocard":  {LangEN: "no eMMC, no card", LangDE: "keine eMMC, keine Karte"},
 	"inv.radio":   {LangEN: "wireless", LangDE: "Funk"},
 	"err.stillslotted": {
 		LangEN: "this blade sits in %s. Take it out of the slot first — that is a separate act, with its own consequences.",
