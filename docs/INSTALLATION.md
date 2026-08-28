@@ -888,6 +888,23 @@ ramdisk, removes the imager along with Qt, the QML plugins, the graphics
 drivers, maps, icons and fonts (57 MB a headless blade has no use for), and
 puts `installer/init` and the freshly built installer in.
 
+**Out of service is not gone either.** Between "this blade is in service" and
+"this hardware no longer exists" there was nothing, and people reached for
+Forget — which deletes the record and with it the blade's token, so an already
+installed system can never talk to Sheath again without being installed a
+second time. **Reset** is the middle: the blade leaves its slot, and the
+assignment, the name, the image and everything the installed system said about
+itself go with it. What stays is what the module *is* — board, memory,
+revision code, boot order — along with its serial number, its token and its
+whole history. It is then **in storage**: expected nowhere, raising nothing.
+Put it in a slot and it is in service again, recognised by its serial number.
+
+The disk is deliberately not touched. Erasing needs the blade to run and boot
+into the mini OS, which is exactly what the hardware being retired often
+cannot do any more, and a reset that only works on healthy blades is no use
+for the ones you are putting away. Where the disk should be emptied, **Erase**
+is its own act, with its own confirmation.
+
 **Off is not gone.** A blade shut down through Sheath is remembered as such:
 `state='offline'` alone is judged critical, because a blade that stops
 answering usually means something broke — but one that was told to stop is

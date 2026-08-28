@@ -1110,9 +1110,17 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch kind {
-	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "shutdown", "reimage", "cancel", "probe":
+	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "shutdown", "reimage", "cancel", "probe", "reset":
 	default:
 		redirectMsg(w, r, to, "err", T(l, "err.unknownact"))
+		return
+	}
+	if kind == "reset" {
+		if err := a.resetBlade(serial); err != nil {
+			redirectMsg(w, r, to, "err", errText(l, err))
+			return
+		}
+		redirectMsg(w, r, backTo(r, "/"), "msg", fmt.Sprintf(T(l, "msg.reset"), bladeName(b)))
 		return
 	}
 	if kind == "shutdown" {
@@ -1233,6 +1241,11 @@ func (a *App) rowStatus(b *Blade, lvl healthLevel) (key, led, arg string) {
 		case stageInstaller, stageRamdisk:
 			return "st.installer", "id", ""
 		}
+	}
+	// Reset and put aside. It is in no slot and expected nowhere; whatever it
+	// is doing is not news.
+	if b.Stored != "" {
+		return "st.stored", "off", ""
 	}
 	// Switched off on purpose. "Offline" would be true and useless: it is the
 	// same word the interface uses for a blade whose power supply died.
@@ -2194,6 +2207,11 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   {{end}}
                   <form method="post" action="/blades/{{.Serial}}/unassign">
                     <button class="mini danger" type="submit">{{t $top.L "act.remove"}}</button></form>
+                </div>
+                <div class="menu-row">
+                  <form method="post" action="/blades/{{.Serial}}/actions/reset"
+                        onsubmit="return confirm('{{printf (t $top.L "act.resetask") (or .Hostname .Serial)}}')">
+                    <button class="mini danger" type="submit" title="{{t $top.L "act.resettip"}}">{{t $top.L "act.reset"}}</button></form>
                 </div>
                 <div class="menu-row">
                   <form method="post" action="/blades/{{.Serial}}/actions/probe"
@@ -3770,6 +3788,7 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
   <div class="body"><p class="hint" style="margin:0">{{t .L "inv.fwhint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "bo.hint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "ssh.hint"}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "inv.storedhint"}}</p>
     <p class="hint" style="margin:.4rem 0 0">{{t .L "inv.forgethint"}}</p></div>
 </div>
 

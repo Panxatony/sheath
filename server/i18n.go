@@ -335,6 +335,20 @@ var catalog = map[string]map[Lang]string{
 	"err.probebusy": {
 		LangEN: "this blade is already set to come up in the mini OS — an installation is armed for it",
 		LangDE: "Dieses Blade startet ohnehin schon ins Mini-OS — für es ist eine Installation scharf"},
+	"st.stored": {LangEN: "in storage", LangDE: "im Lager"},
+	"act.reset": {LangEN: "Reset", LangDE: "Zurücksetzen"},
+	"act.resettip": {
+		LangEN: "Takes the blade out of service and out of its slot: assignment, name, image and everything the installed system said about itself go. What it is stays, and so do its serial number, its token and its history — it is itself again when it comes back. The disk is not touched.",
+		LangDE: "Nimmt das Blade außer Dienst und aus seinem Steckplatz: Zuordnung, Name, Image und alles, was das installierte System über sich gesagt hat, fallen weg. Was es ist, bleibt, ebenso Seriennummer, Token und Historie — es ist wieder es selbst, wenn es zurückkommt. Die Platte bleibt unangetastet."},
+	"act.resetask": {
+		LangEN: "Reset %s and put it aside? It leaves its slot; the disk keeps what is on it.",
+		LangDE: "%s zurücksetzen und weglegen? Es verlässt seinen Steckplatz; die Platte behält, was darauf ist."},
+	"msg.reset": {
+		LangEN: "%s was reset — in storage, out of its slot, and known by its serial number when it comes back",
+		LangDE: "%s wurde zurückgesetzt — im Lager, aus dem Steckplatz, und an seiner Seriennummer wiedererkannt, wenn es zurückkommt"},
+	"inv.storedhint": {
+		LangEN: "A blade in storage has been taken out of service and keeps everything that identifies it: serial number, hardware, token and history. Put it in a slot and it is in service again. Forget, by contrast, removes the record — and with it the token, which an already installed system cannot get back without being installed again.",
+		LangDE: "Ein Blade im Lager ist außer Dienst und behält alles, was es ausmacht: Seriennummer, Hardware, Token und Historie. In einen Steckplatz gesteckt, ist es wieder im Dienst. Forget dagegen entfernt den Datensatz — und mit ihm das Token, das ein bereits installiertes System ohne Neuinstallation nicht zurückbekommt."},
 	"st.halted": {LangEN: "switched off", LangDE: "ausgeschaltet"},
 	"act.halt":  {LangEN: "Shut down", LangDE: "Herunterfahren"},
 	"act.halttip": {

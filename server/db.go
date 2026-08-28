@@ -183,6 +183,7 @@ var migrations = []string{
 	`ALTER TABLE sites ADD COLUMN desired_at TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN part_table TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE blades ADD COLUMN halted TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE blades ADD COLUMN stored TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -281,6 +282,10 @@ type Blade struct {
 	// what it was told is not a blade that failed, and the difference is
 	// invisible from the outside: both stop answering.
 	Halted string `json:"halted"`
+	// When it was reset and put aside. The record stays, the serial number
+	// stays, the history stays — what goes is everything that said where it
+	// was and what it was for.
+	Stored string `json:"stored"`
 
 	// derived, not stored
 	IP       string `json:"ip"`
@@ -907,6 +912,74 @@ func (a *App) finishWipe(serial string) error {
 	return err
 }
 
+// Back to how it came out of the box, as far as Sheath is concerned.
+//
+// Between "this blade is in service" and "this hardware no longer exists"
+// there was nothing, and people reached for Forget — which deletes the record
+// and with it the token, so the blade could never talk to Sheath again
+// without being reinstalled. What was wanted is the middle: take it out of
+// service, put it in a cupboard, and have it be itself again when it comes
+// back months later.
+//
+// So the position, the assignment and everything the installed system said
+// about itself go. What stays is what the hardware is (the module does not
+// change by being unplugged), the serial number, the token and the whole
+// history under that serial.
+//
+// The disk is not touched. Erasing needs the blade to run and boot into the
+// mini OS, which is exactly what a blade being put away often cannot do any
+// more — and a reset that only works on healthy hardware is no use for the
+// hardware you are retiring.
+func (a *App) resetBlade(serial string) error {
+	b, err := a.getBlade(serial)
+	if err != nil {
+		return me("err.bladeunknown", serial)
+	}
+	if b.State == "provisioning" {
+		return me("err.busyinstall")
+	}
+	facts := hardwareOnly(b.Facts)
+	_, err = a.db.Exec(`UPDATE blades SET rack_id=NULL,slot=NULL,image='',hostname='',
+		config_applied='',facts_json=?,health_json='{}',install_state=?,installed_at='',
+		state='new',halted='',probe='',probe_sent='',stored=? WHERE serial=?`,
+		facts, installIdle, now(), serial)
+	if err != nil {
+		return err
+	}
+	_, _ = a.db.Exec(`DELETE FROM configs WHERE scope=?`, "blade:"+serial)
+	_, _ = a.db.Exec(`UPDATE commands SET taken=? WHERE serial=? AND taken=''`,
+		now()+" (blade reset)", serial)
+	_ = a.clearAlert(serial)
+	name := b.Hostname
+	if name == "" {
+		name = serial
+	}
+	a.logEvent(serial, "warn", "reset and put aside — was "+name+", disk untouched")
+	_, _ = a.syncDHCP()
+	return nil
+}
+
+// hardwareOnly keeps the facts that describe the module and drops the ones
+// that describe whatever was installed on it. The same list the merge uses to
+// decide what a report may not erase — what survives a report survives this.
+func hardwareOnly(raw json.RawMessage) string {
+	var all map[string]any
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &all)
+	}
+	keep := map[string]any{}
+	for _, k := range hardwareKeys {
+		if v, ok := all[k]; ok {
+			keep[k] = v
+		}
+	}
+	out, err := json.Marshal(keep)
+	if err != nil {
+		return "{}"
+	}
+	return string(out)
+}
+
 // cancelInstall calls off a requested installation or erase. Arming one is a
 // deliberate act and so is changing your mind: until now the only way back
 // was for the blade to boot and carry it out, which also meant a blade could
@@ -1236,7 +1309,7 @@ func (a *App) settingInt(key string, def int) int {
 // ── Blades ───────────────────────────────────────────────────────────
 
 const bladeCols = `serial,short_serial,rack_id,slot,hostname,mac,image,variant,state,
-	groups_json,facts_json,health_json,install_state,installed_at,config_applied,last_seen,created,probe,halted`
+	groups_json,facts_json,health_json,install_state,installed_at,config_applied,last_seen,created,probe,halted,stored`
 
 func (a *App) scanBlade(sc interface{ Scan(...any) error }) (*Blade, error) {
 	var b Blade
@@ -1244,7 +1317,7 @@ func (a *App) scanBlade(sc interface{ Scan(...any) error }) (*Blade, error) {
 	err := sc.Scan(&b.Serial, &b.ShortSerial, &b.RackID, &b.Slot, &b.Hostname, &b.MAC,
 		&b.Image, &b.Variant, &b.State, &groups, &facts, &health,
 		&b.InstallState, &b.InstalledAt, &b.ConfigApp, &b.LastSeen, &b.Created, &b.Probe,
-		&b.Halted)
+		&b.Halted, &b.Stored)
 	if err != nil {
 		return nil, err
 	}

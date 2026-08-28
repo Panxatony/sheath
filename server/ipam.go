@@ -194,7 +194,10 @@ func (a *App) placeBlade(serial string, rackID *int64, slot *int) error {
 	if state == "new" {
 		state = "enrolled"
 	}
-	_, err = a.db.Exec(`UPDATE blades SET rack_id=?,slot=?,hostname=?,mac=?,state=?
+	// Back in a slot is back in service. Deliberately here and not on the
+	// blade's next report: a blade that was reset while still running keeps
+	// reporting until somebody pulls it, and that must not undo the decision.
+	_, err = a.db.Exec(`UPDATE blades SET rack_id=?,slot=?,hostname=?,mac=?,state=?,stored=''
 		WHERE serial=?`, *rackID, *slot, host, mac, state, serial)
 	if err != nil {
 		return me("err.assignfail", err.Error())
@@ -436,11 +439,11 @@ func evalHealthWith(b *Blade, p Policy) (healthLevel, []error) {
 	if len(b.Health) > 0 {
 		_ = json.Unmarshal(b.Health, &h)
 	}
-	// Switched off on purpose. It is not answering because it was told not
-	// to, and hUnknown is what the watch already understands as "nothing to
-	// say about this one" — the same treatment a blade gets before it has
-	// ever reported.
-	if b.Halted != "" {
+	// Switched off on purpose, or reset and put aside. It is not answering
+	// because it was told not to, and hUnknown is what the watch already
+	// understands as "nothing to say about this one" — the same treatment a
+	// blade gets before it has ever reported.
+	if b.Halted != "" || b.Stored != "" {
 		return hUnknown, nil
 	}
 	if b.State == "offline" {
