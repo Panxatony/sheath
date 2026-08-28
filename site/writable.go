@@ -1,9 +1,10 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 )
 
 // Whether this site can still write where it has to.
@@ -20,13 +21,21 @@ import (
 // fine and is not. So this is asked once a pass, and the answer travels with
 // the heartbeat.
 
-// writeTrouble names the directories that would refuse a write, or "" when
-// all of them would take one.
+// writeTrouble names the directories that refuse a write, or "" when all of
+// them take one.
 //
-// access(2) rather than a probe file: it reports EROFS for a read-only mount,
-// which is the failure this exists for, and it leaves nothing behind. Five
-// files created and deleted every thirty seconds on a flash device is a cost
-// with no return.
+// A real write, not access(2). access looked right — it returns EROFS for a
+// read-only mount and leaves nothing behind — and it was wrong for exactly
+// the case this exists for. When ext4 hits an I/O error it does not remount
+// the way a person does; it sets its own shutdown flag, and the mount still
+// reads `rw,noatime,emergency_ro`. The superblock is not marked read-only, so
+// access says the directory is writable while every write returns EROFS. It
+// was measured saying "no trouble" four minutes after the disk had stopped
+// taking writes.
+//
+// So: a file is created and removed in each directory, once a pass. Five
+// inodes every thirty seconds is a cost; being wrong about whether a site can
+// work at all is the larger one.
 func (s *site) writeTrouble() string {
 	dirs := map[string]string{
 		"images":       s.cfg.ImagesDir,
@@ -40,7 +49,7 @@ func (s *site) writeTrouble() string {
 		if path == "" {
 			continue
 		}
-		if err := syscall.Access(path, wOK); err != nil {
+		if err := probeWrite(path); err != nil {
 			bad = append(bad, what+" ("+err.Error()+")")
 		}
 	}
@@ -53,6 +62,20 @@ func (s *site) writeTrouble() string {
 	return "cannot write to " + strings.Join(bad, ", ")
 }
 
-// wOK is access(2)'s W_OK. Spelled out rather than pulled from x/sys, which
-// this program does not otherwise need.
-const wOK = 0x2
+// probeWrite creates a file and removes it again. O_EXCL so a leftover from a
+// crash is never taken for success, and the name says what it is for anybody
+// who finds one.
+func probeWrite(dir string) error {
+	name := filepath.Join(dir, ".sheath-writable")
+	_ = os.Remove(name)
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	// Closing is where a deferred write reports itself, so its error counts.
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Remove(name)
+}
