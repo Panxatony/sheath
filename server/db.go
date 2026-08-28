@@ -1541,6 +1541,15 @@ func (a *App) forgetBlade(serial string) error {
 	if b.State == "provisioning" {
 		return me("err.busyinstall")
 	}
+	// A blade that is still reporting is not hardware that is gone, and it is
+	// the one case where forgetting does lasting damage: its installed system
+	// keeps the token this deletes, so the agent is locked out and only a
+	// second installation lets it back in. Reset is what that person means,
+	// and where they really do mean forget, switching it off first costs
+	// nothing.
+	if b.State == "online" {
+		return me("err.forgetrunning", bladeName(b))
+	}
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err

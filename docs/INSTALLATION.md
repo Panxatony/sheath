@@ -888,6 +888,15 @@ ramdisk, removes the imager along with Qt, the QML plugins, the graphics
 drivers, maps, icons and fonts (57 MB a headless blade has no use for), and
 puts `installer/init` and the freshly built installer in.
 
+**Forget is for hardware that is gone**, and it says what that costs: the
+record goes, and with it the blade's token. An installed system keeps the old
+one in `/etc/sheath/agent.env` and has no way to learn the new one, so a blade
+that comes back is a stranger whose agent is locked out until it is installed
+a second time. A blade that is **still reporting** is therefore refused
+outright — that is the only case where forgetting does lasting damage, and
+someone in that position meant either "put it away" (reset) or "it is really
+leaving" (shut it down first).
+
 **Out of service is not gone either.** Between "this blade is in service" and
 "this hardware no longer exists" there was nothing, and people reached for
 Forget — which deletes the record and with it the blade's token, so an already

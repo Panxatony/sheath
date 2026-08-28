@@ -385,12 +385,15 @@ var catalog = map[string]map[Lang]string{
 	"inv.forget": {LangEN: "Forget", LangDE: "Entfernen"},
 	"inv.unused": {LangEN: "in no BladeRunner", LangDE: "in keinem BladeRunner"},
 	"inv.forgot": {LangEN: "%s removed from the inventory", LangDE: "%s aus dem Inventar entfernt"},
+	"err.forgetrunning": {
+		LangEN: "%s is still running and reporting. Forgetting it deletes the token its agent uses, and that agent would be locked out until the blade is installed again — reset it if it is going into storage, or shut it down first if it is really leaving.",
+		LangDE: "%s läuft noch und meldet sich. Beim Entfernen geht das Token verloren, mit dem sein Agent spricht, und der bliebe ausgesperrt, bis das Blade neu installiert wird — setze es zurück, wenn es ins Lager geht, oder fahre es vorher herunter, wenn es wirklich weggeht."},
 	"inv.forgetask": {
-		LangEN: "Remove %s from the inventory, with its measurements and its pending commands? What it did stays in the log.",
-		LangDE: "%s samt Messwerten und offenen Kommandos aus dem Inventar entfernen? Was es getan hat, bleibt im Protokoll."},
+		LangEN: "Remove %s from the inventory for good? Its record goes, and with it the token its installed system uses — that system can then never talk to Sheath again without being installed a second time. If this blade is only going into a cupboard, reset it instead. What it did stays in the log.",
+		LangDE: "%s endgültig aus dem Inventar entfernen? Der Datensatz geht, und mit ihm das Token, mit dem sein installiertes System spricht — dieses System erreicht Sheath danach nie wieder ohne eine zweite Installation. Soll das Blade nur in den Schrank, setze es statt dessen zurück. Was es getan hat, bleibt im Protokoll."},
 	"inv.forgethint": {
-		LangEN: "A blade standing in a slot is not removed here: take it out of its BladeRunner first, which asks whether its disk should be erased on the way.",
-		LangDE: "Ein Blade in einem Steckplatz wird hier nicht entfernt: nimm es erst aus seinem BladeRunner, wobei gefragt wird, ob die Platte dabei gelöscht werden soll."},
+		LangEN: "Forget is for hardware that is gone. It deletes the record, the measurements and the pending commands — and the blade's token, which an installed system cannot get back on its own: a blade that comes back is a stranger, and its agent is locked out until it is installed again. For a blade being taken out of service and kept, reset it: that keeps the serial number, the token and the history. A blade standing in a slot is not removed here either — take it out of its BladeRunner first.",
+		LangDE: "Entfernen ist für Hardware, die es nicht mehr gibt. Es löscht den Datensatz, die Messwerte und die offenen Kommandos — und das Token des Blades, das ein installiertes System von sich aus nicht zurückbekommt: ein zurückkehrendes Blade ist ein Fremder, und sein Agent bleibt ausgesperrt, bis es neu installiert wird. Für ein Blade, das außer Dienst geht und aufgehoben wird, nimm Zurücksetzen: das behält Seriennummer, Token und Historie. Ein Blade in einem Steckplatz wird hier ohnehin nicht entfernt — nimm es erst aus seinem BladeRunner."},
 	"err.nodevice": {
 		LangEN: "%s has no %s. It reported: %s",
 		LangDE: "%s hat kein %s. Gemeldet hat es: %s"},

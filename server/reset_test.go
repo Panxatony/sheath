@@ -96,3 +96,32 @@ func TestASlotEndsStorage(t *testing.T) {
 		t.Error("it is in a slot and still counted as being in storage")
 	}
 }
+
+// Forgetting is for hardware that is gone. A blade that is still reporting is
+// the one case where it does lasting damage — its installed system keeps the
+// token that would be deleted — so it is refused, and the message names the
+// two things the person probably meant.
+func TestForgetRefusesABladeThatIsStillRunning(t *testing.T) {
+	a := testApp(t)
+	if _, err := a.db.Exec(`INSERT INTO blades(serial,short_serial,state,token,created,hostname)
+		VALUES('s1','s1','online','tok',?,'blade-r1s01')`, now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.forgetBlade("s1"); err == nil {
+		t.Fatal("a running blade was forgotten")
+	}
+	if _, err := a.getBlade("s1"); err != nil {
+		t.Errorf("the record is gone anyway: %v", err)
+	}
+
+	// Switched off, it is a candidate again.
+	if _, err := a.db.Exec(`UPDATE blades SET state='offline' WHERE serial='s1'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.forgetBlade("s1"); err != nil {
+		t.Fatalf("forgetBlade on a blade that is off: %v", err)
+	}
+	if _, err := a.getBlade("s1"); err == nil {
+		t.Error("the record survived")
+	}
+}
