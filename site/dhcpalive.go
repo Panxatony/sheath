@@ -32,7 +32,12 @@ func (s *site) dhcpTrouble() string {
 	if listeningOnUDP(dhcpPort) {
 		return ""
 	}
-	if !unitExists("dnsmasq") {
+	// Whether this site serves DHCP at all is answered by whether it wrote a
+	// range: that file is this program's own statement of intent. Asking
+	// systemd instead was wrong twice over — a masked unit reads as "not
+	// installed", which is exactly the state somebody would want to hear
+	// about, and a site can be configured for DHCP before the package is.
+	if !s.servesDHCP() {
 		return ""
 	}
 	out, err := exec.Command("sudo", "-n", "systemctl", "start", "dnsmasq").CombinedOutput()
@@ -70,13 +75,13 @@ func listeningOnUDP(port int) bool {
 	return false
 }
 
-// unitExists keeps a machine that never had dnsmasq out of the reckoning.
-// LoadState is "not-found" there, and asking is cheaper than guessing from
-// whether a binary is on the path.
-func unitExists(unit string) bool {
-	out, err := exec.Command("systemctl", "show", "-p", "LoadState", "--value", unit).Output()
-	if err != nil {
+// servesDHCP says whether this site is the DHCP server for its segment. The
+// range file it writes itself is the honest signal: a site that hands out
+// addresses has one, and a site that does not never writes it.
+func (s *site) servesDHCP() bool {
+	if s.cfg.RangeFile == "" {
 		return false
 	}
-	return strings.TrimSpace(string(out)) == "loaded"
+	st, err := os.Stat(s.cfg.RangeFile)
+	return err == nil && st.Size() > 0
 }
