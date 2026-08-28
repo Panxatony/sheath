@@ -195,7 +195,13 @@ func (s *site) ensureBoot(d *desired) error {
 	if want == "" {
 		want = d.Boot.SHA256 // a centre older than the file list
 	}
-	if want != "" && s.payloadHeld() == want {
+	// The stamp says which payload is here; it says nothing about where that
+	// payload points. A site that changes its address — a new machine, a move
+	// onto the address the blades already know — keeps a boot.img aimed at
+	// where it used to be, and every blade that netboots then talks into a
+	// void: it holds a lease, it answers a ping, and nothing ever reaches it.
+	// Nine blades sat like that. So the aim is checked as well as the stamp.
+	if want != "" && s.payloadHeld() == want && s.aimedHere() {
 		return nil
 	}
 	if s.dry {
@@ -253,6 +259,20 @@ func (s *site) ensureBoot(d *desired) error {
 // right for exactly one site: everywhere else a blade would be told to fetch
 // hundreds of megabytes across the link that may be the very thing that is
 // down, when the answer is in the same room.
+// aimedHere says whether the payload on disk sends blades to this site's own
+// relay. Read from the plain cmdline.txt, which is written beside boot.img
+// and carries the same line the image does.
+func (s *site) aimedHere() bool {
+	if s.cfg.RelayURL == "" {
+		return true // nothing to aim at, so nothing to be wrong
+	}
+	b, err := os.ReadFile(filepath.Join(s.cfg.TFTPDir, "cmdline.txt"))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(b), "sheath_server="+strings.TrimRight(s.cfg.RelayURL, "/"))
+}
+
 func (s *site) aimPayloadHere(path string) error {
 	if s.cfg.RelayURL == "" {
 		log.Printf("boot payload: no -relay-url, leaving the server address as built")

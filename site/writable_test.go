@@ -50,3 +50,37 @@ func TestWriteTroubleNamesWhatRefuses(t *testing.T) {
 		t.Errorf("unset directories were counted as trouble: %q", got)
 	}
 }
+
+// A payload that still points at the address this site used to have is a
+// payload every netbooting blade follows into a void: it takes a lease, it
+// answers a ping, and nothing reaches it. The stamp cannot see that — it says
+// which payload is here, not where it points.
+func TestAimedHereReadsWhereThePayloadPoints(t *testing.T) {
+	dir := t.TempDir()
+	s := &site{cfg: config{TFTPDir: dir, RelayURL: "http://10.0.0.9:8081"}}
+
+	if !(&site{cfg: config{TFTPDir: dir}}).aimedHere() {
+		t.Error("a site with no relay URL has nothing to be wrong about")
+	}
+	if s.aimedHere() {
+		t.Error("no cmdline.txt at all counted as aimed here")
+	}
+	write := func(line string) {
+		if err := os.WriteFile(filepath.Join(dir, "cmdline.txt"), []byte(line), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("console=tty1 ip=dhcp sheath_server=http://10.0.0.7:8081\n")
+	if s.aimedHere() {
+		t.Error("a payload aimed at the old address counted as current")
+	}
+	write("console=tty1 ip=dhcp sheath_server=http://10.0.0.9:8081\n")
+	if !s.aimedHere() {
+		t.Error("a payload aimed at this site was not recognised")
+	}
+	// A trailing slash on the configured URL is the same address.
+	s.cfg.RelayURL = "http://10.0.0.9:8081/"
+	if !s.aimedHere() {
+		t.Error("a trailing slash made the same address look different")
+	}
+}
