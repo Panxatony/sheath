@@ -406,8 +406,11 @@ func (a *App) hSiteStatus(w http.ResponseWriter, r *http.Request) {
 		// What the site holds on its own disk, which is not the same thing as
 		// what the catalogue says exists.
 		Stock []SiteImageState `json:"stock"`
+		// Empty unless the site found it cannot write where it has to.
+		Trouble string `json:"trouble"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
+	a.recordSiteTrouble(id, strings.TrimSpace(in.Trouble))
 	a.recordSiteSelf(id, strings.TrimSpace(in.Payload), in.Version, strings.TrimSpace(in.RelayURL))
 	if in.Stock != nil {
 		a.recordSiteImages(id, in.Stock)

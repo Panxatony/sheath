@@ -466,7 +466,11 @@ var catalog = map[string]map[Lang]string{
 		LangEN: "The revision code is the module's true name: the firmware reads it out of the OTP and it carries the board type, the revision, the memory size, the chip and who built it. The device tree model says less.",
 		LangDE: "Der Revisionscode ist der eigentliche Name des Moduls: die Firmware liest ihn aus dem OTP, und er trägt Bauform, Revision, Speichergröße, Chip und Hersteller. Das Device-Tree-Modell sagt weniger."},
 
-	"pay.title":    {LangEN: "Netboot payload", LangDE: "Netboot-Payload"},
+	"pay.title": {LangEN: "Netboot payload", LangDE: "Netboot-Payload"},
+	"site.troublehint": {
+		LangEN: "This site answers, reports and serves what it already holds — reading goes on working long after writing has stopped. It cannot cache a new image, take a new netboot payload, or let dnsmasq append to the log it watches. A disk that has gone read-only is the usual cause; the kernel log on that machine says why.",
+		LangDE: "Dieser Standort antwortet, meldet sich und liefert aus, was er schon hat — Lesen funktioniert lange weiter, nachdem Schreiben aufgehört hat. Er kann kein neues Image spiegeln, kein neues Netboot-Payload übernehmen und dnsmasq nicht in das Protokoll schreiben lassen, das er mitliest. Meist steckt eine Platte dahinter, die nur noch lesbar ist; das Kernel-Protokoll der Maschine sagt, warum."},
+	"site.trouble": {LangEN: "cannot write", LangDE: "kann nicht schreiben"},
 	"pay.same":     {LangEN: "installer as at the centre", LangDE: "Installer wie in der Zentrale"},
 	"pay.differs":  {LangEN: "different installer than the centre", LangDE: "anderer Installer als die Zentrale"},
 	"pay.unknown":  {LangEN: "installer unknown", LangDE: "Installer unbekannt"},

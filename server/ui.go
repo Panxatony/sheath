@@ -459,6 +459,13 @@ func siteHealth(l Lang, st Site) (key, led, seen string) {
 		return "site.never", "warn", ""
 	}
 	seen = ago(l, st.LastSeen)
+	// A site that answers on time and cannot write is the case this exists
+	// for: everything else a site reports is reading, and reading goes on
+	// working long after the disk has gone read-only. It has to beat "online"
+	// or it is invisible.
+	if st.Trouble != "" && time.Since(t) < 15*time.Minute {
+		return "site.trouble", "crit", seen
+	}
 	switch d := time.Since(t); {
 	case d < 3*time.Minute:
 		return "site.online", "ok", seen
@@ -2830,6 +2837,7 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 		"EnrollCmd": enrollCommand(a.baseURL, code),
 		"Pay":       T(l, payKey),
 		"PayLED":    payLED,
+		"Trouble":   st.Trouble,
 		"PayHere":   shortOr(st.Payload),
 		"PayCentre": shortOr(centre.Version),
 		"SiteVer":   st.SiteVersion,
@@ -2909,6 +2917,15 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
     {{end}}
   </div>
 </div>
+
+{{if .Trouble}}
+<div class="card">
+  <div class="card-head"><h2>{{t .L "site.trouble"}}</h2>
+    <span class="chip crit">{{t .L "site.trouble"}}</span></div>
+  <div class="body"><p class="mono" style="margin:0">{{.Trouble}}</p>
+    <p class="hint" style="margin:.4rem 0 0">{{t .L "site.troublehint"}}</p></div>
+</div>
+{{end}}
 
 <div class="card">
   <div class="card-head"><h2>{{t .L "pay.title"}}</h2>

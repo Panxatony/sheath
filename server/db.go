@@ -184,6 +184,7 @@ var migrations = []string{
 	`ALTER TABLE images ADD COLUMN part_table TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE blades ADD COLUMN halted TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE blades ADD COLUMN stored TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sites ADD COLUMN trouble TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -225,6 +226,9 @@ type Site struct {
 	// that reported nothing.
 	Payload     string `json:"payload"`
 	SiteVersion string `json:"site_version"`
+	// What this site says it cannot write to. Empty is the normal case, and
+	// anything else is a site that looks well from every other angle.
+	Trouble string `json:"trouble"`
 
 	// A pending enrollment code, and how long it is good for. Never
 	// serialised outwards for the same reason the token is not.
@@ -1208,7 +1212,7 @@ func (a *App) listImages() ([]Image, error) {
 
 const siteCols = `id,name,location,net_base,gateway,dns,domain,
 	pool_from,pool_to,offset_base,offset_step,local,token,last_seen,created,
-	payload,site_version,enroll_code,enroll_until,host_prefix,relay_url,lease`
+	payload,site_version,enroll_code,enroll_until,host_prefix,relay_url,lease,trouble`
 
 func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	var st Site
@@ -1216,7 +1220,8 @@ func scanSite(sc interface{ Scan(...any) error }) (*Site, error) {
 	err := sc.Scan(&st.ID, &st.Name, &st.Location, &st.NetBase, &st.Gateway, &st.DNS,
 		&st.Domain, &st.PoolFrom, &st.PoolTo, &st.OffsetBase, &st.OffsetStep,
 		&local, &st.Token, &st.LastSeen, &st.Created, &st.Payload, &st.SiteVersion,
-		&st.EnrollCode, &st.EnrollUntil, &st.HostPrefix, &st.RelayURL, &st.Lease)
+		&st.EnrollCode, &st.EnrollUntil, &st.HostPrefix, &st.RelayURL, &st.Lease,
+		&st.Trouble)
 	if err != nil {
 		return nil, err
 	}
@@ -1490,6 +1495,26 @@ func (a *App) recordSiteSelf(id int64, payload, siteVersion, relayURL string) {
 	// is not an instruction to forget where its blades report.
 	_, _ = a.db.Exec(`UPDATE sites SET payload=?, site_version=? WHERE id=?`,
 		payload, siteVersion, id)
+}
+
+// recordSiteTrouble keeps what a site says it cannot write to, and says so
+// out loud the moment it changes. A read-only disk is invisible from
+// everything else a site reports — the relay answers, the heartbeat arrives,
+// the payload checksum matches, because all of that is reading.
+func (a *App) recordSiteTrouble(id int64, trouble string) {
+	var was string
+	if err := a.db.QueryRow(`SELECT trouble FROM sites WHERE id=?`, id).Scan(&was); err != nil {
+		return
+	}
+	if was == trouble {
+		return
+	}
+	_, _ = a.db.Exec(`UPDATE sites SET trouble=? WHERE id=?`, trouble, id)
+	if trouble == "" {
+		a.logEvent("", "info", fmt.Sprintf("site %d writes again", id))
+		return
+	}
+	a.logEvent("", "warn", fmt.Sprintf("site %d: %s", id, trouble))
 }
 
 // mergeFacts folds a few facts into what is already known about a blade,

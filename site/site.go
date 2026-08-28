@@ -310,8 +310,12 @@ func (s *site) report(d *desired) {
 		"blades":     len(d.Blades),
 		"images":     len(d.Images),
 		"dnsmasq_ok": true,
-		"stock":      s.stockHeld(),
-		"payload":    s.payloadHeld(),
+		// Empty when every directory this site writes to would take a write.
+		// Reading works long after writing has stopped, and everything else
+		// in this report is reading.
+		"trouble": s.writeTrouble(),
+		"stock":   s.stockHeld(),
+		"payload": s.payloadHeld(),
 		// Where the blades of this site should report. Only this machine
 		// knows it — the centre has never seen this network — and without it
 		// the centre can only hand out its own address, which is how every

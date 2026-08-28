@@ -500,6 +500,26 @@ because they were pretending not to be:
   the wrong address moves itself, but only to one that answers a health check
   first.
 
+### A site that cannot write says so
+
+The disk holding `/srv/sheath` at one site lost its capacity: the kernel saw
+zero sectors, every write landed beyond the end of the device, ext4 aborted
+its journal and remounted `emergency_ro`. For five hours the centre showed
+that site as well — the relay answered, the heartbeat arrived on time, the
+payload checksum matched. Every one of those is a read, and reading went on
+working.
+
+So each pass asks `access(2)` whether the five directories the site writes to
+would take a write: images, TFTP root, binaries, state, reservations. The
+answer travels with the heartbeat and with `/healthz`, the centre keeps it on
+the site record, and a site that cannot write is shown as **cannot write**
+rather than online — it has to beat "online" or it is invisible. It appears in
+the log as a warning when it starts and as a note when it clears.
+
+What such a site can still do is serve what it already holds: netboot works,
+and an installation falls through to the centre for the image. That is why it
+looks fine, and why it has to be said out loud.
+
 ### Still open
 
 
