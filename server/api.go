@@ -375,7 +375,8 @@ func (a *App) hSiteEvents(w http.ResponseWriter, r *http.Request) {
 		if lvl == "" {
 			lvl = "info"
 		}
-		a.logEvent(e.Serial, lvl, "site: "+e.Msg)
+		// The time the site saw it, not the time it reached here.
+		a.logEventAt(e.Serial, lvl, "site: "+e.Msg, e.TS)
 	}
 	a.touchSite(id)
 	writeJSON(w, 200, map[string]int{"accepted": len(in.Events)})
@@ -1537,7 +1538,7 @@ func (a *App) hHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) hEvents(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(`SELECT ts,serial,level,msg FROM events ORDER BY ts DESC, id DESC LIMIT 200`)
+	rows, err := a.db.Query(`SELECT ts,serial,level,msg,received FROM events ORDER BY ts DESC, id DESC LIMIT 200`)
 	if err != nil {
 		fail(w, 500, "%v", err)
 		return
@@ -1546,7 +1547,7 @@ func (a *App) hEvents(w http.ResponseWriter, r *http.Request) {
 	out := []EventRow{}
 	for rows.Next() {
 		var e EventRow
-		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg); err == nil {
+		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg, &e.Received); err == nil {
 			out = append(out, e)
 		}
 	}

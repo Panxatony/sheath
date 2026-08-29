@@ -857,6 +857,10 @@ type logView struct {
 	Level string
 	LED   string
 	Msg   string
+	// Set only on a line that waited out an outage at its site: it says when
+	// the centre finally heard about it. Every other line stays as short as
+	// it was.
+	Late string
 }
 
 // buildLog turns the stored events into something readable: the slot instead
@@ -878,6 +882,9 @@ func buildLog(rows []EventRow, l Lang) []logView {
 		if t, err := time.Parse(time.RFC3339, e.TS); err == nil {
 			lv.When = t.Local().Format("2006-01-02 15:04:05")
 			lv.Ago = ago(l, e.TS)
+		}
+		if r, err := time.Parse(time.RFC3339, e.Received); err == nil {
+			lv.Late = fmt.Sprintf(T(l, "log.late"), r.Local().Format("15:04:05"))
 		}
 		out = append(out, lv)
 	}
@@ -2316,7 +2323,7 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
           <td class="mono nowrap">{{.When}}{{if .Ago}}<span class="hint"> · {{.Ago}}</span>{{end}}</td>
           <td class="mono">{{.Slot}}</td>
           <td class="mono">{{.Name}}</td>
-          <td><span class="led {{.LED}}"></span>{{.Msg}}</td>
+          <td><span class="led {{.LED}}"></span>{{.Msg}}{{if .Late}}<span class="hint"> · {{.Late}}</span>{{end}}</td>
         </tr>
       {{end}}</tbody>
     </table>

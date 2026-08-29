@@ -500,6 +500,26 @@ because they were pretending not to be:
   the wrong address moves itself, but only to one that answers a health check
   first.
 
+### An event keeps the time it happened
+
+A site buffers what it observes while the centre is unreachable and sends it
+when the link returns, each line carrying the moment it happened. The centre
+used to drop that and stamp the moment of delivery, so a two-hour outage
+arrived as a burst of lines all dated the second the link came back — and
+since the log sorts by that field, the order was wrong as well as the times.
+The one thing the buffering exists to preserve was the one thing lost.
+
+The time the site gives is now kept, and the delivery time with it, in its own
+column. "Happened at 19:45, reached the centre at 21:52" is a different fact
+from either half, and it is the fact that explains a gap. A line that arrived
+as it happened carries no delivery time at all; the log shows the addition
+only where there is one.
+
+What a site says about the time is not taken on trust: a clock that is out by
+a week is a thing sites have, and an event dated next month would sort above
+everything for ever. Anything more than five minutes in the future or more
+than a month old is treated as no answer, and the arrival time is used.
+
 ### A site that is not serving DHCP says so
 
 dnsmasq died at one site during a reload — it had just been handed a new

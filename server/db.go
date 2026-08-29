@@ -185,6 +185,7 @@ var migrations = []string{
 	`ALTER TABLE blades ADD COLUMN halted TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE blades ADD COLUMN stored TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN trouble TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE events ADD COLUMN received TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -465,6 +466,49 @@ func (a *App) logEvent(serial, level, msg string) {
 		now(), serial, level, msg)
 }
 
+// logEventAt keeps the time something happened, which is not always the time
+// the centre heard about it.
+//
+// A site buffers what it sees while the link is down and sends it when the
+// link comes back, each line carrying the moment it happened. That timestamp
+// used to be dropped on arrival: a two-hour outage arrived as a burst of lines
+// all dated the second the link returned, and the one thing the buffering
+// exists to preserve was the one thing lost. The log sorts by ts, so the
+// order was wrong as well as the times.
+//
+// The delivery time is kept too, in its own column. "Happened at 19:45,
+// arrived at 21:52" is a different fact from either half, and it is the fact
+// that explains a gap in the log.
+func (a *App) logEventAt(serial, level, msg, when string) {
+	arrived := now()
+	ts := usableStamp(when, arrived)
+	received := ""
+	if ts != arrived {
+		received = arrived
+	}
+	_, _ = a.db.Exec(`INSERT INTO events(ts,serial,level,msg,received) VALUES(?,?,?,?,?)`,
+		ts, serial, level, msg, received)
+}
+
+// usableStamp decides whether to believe what a site says the time was. A
+// clock that is out by hours is a thing sites have, and an event dated next
+// week sorts above everything for ever. Anything outside a generous window
+// around now is treated as no answer at all.
+func usableStamp(when, fallback string) string {
+	if when == "" {
+		return fallback
+	}
+	t, err := time.Parse(time.RFC3339, when)
+	if err != nil {
+		return fallback
+	}
+	d := time.Since(t)
+	if d < -5*time.Minute || d > 30*24*time.Hour {
+		return fallback
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 // EventRow is one line of the activity log, already joined with the blade it
 // belongs to — the log is read per BladeRunner, and a bare serial number says
 // nothing to someone standing in front of the rack.
@@ -472,10 +516,14 @@ func (a *App) logEvent(serial, level, msg string) {
 // TS, Serial, Level, Msg while every other endpoint speaks snake_case, and a
 // client cannot be expected to guess which of the two a field will be in.
 type EventRow struct {
-	TS       string `json:"ts"`
-	Serial   string `json:"serial"`
-	Level    string `json:"level"`
-	Msg      string `json:"msg"`
+	TS     string `json:"ts"`
+	Serial string `json:"serial"`
+	Level  string `json:"level"`
+	Msg    string `json:"msg"`
+	// When the centre heard about it, and only when that is not when it
+	// happened: a line that waited out an outage at its site says so, and
+	// every other line stays as short as it was.
+	Received string `json:"received,omitempty"`
 	Hostname string `json:"hostname,omitempty"`
 	Slot     *int   `json:"slot,omitempty"`
 }
@@ -488,7 +536,7 @@ type EventRow struct {
 // blades, not of the enclosure.
 func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
 	rows, err := a.db.Query(`
-		SELECT e.ts, e.serial, e.level, e.msg, b.hostname, b.slot
+		SELECT e.ts, e.serial, e.level, e.msg, e.received, b.hostname, b.slot
 		  FROM events e
 		  JOIN blades b ON b.serial = e.serial
 		 WHERE b.rack_id = ?
@@ -501,7 +549,8 @@ func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
 	var out []EventRow
 	for rows.Next() {
 		var e EventRow
-		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg, &e.Hostname, &e.Slot); err != nil {
+		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg, &e.Received,
+			&e.Hostname, &e.Slot); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

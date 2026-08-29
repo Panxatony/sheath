@@ -707,6 +707,7 @@ var catalog = map[string]map[Lang]string{
 
 	"log.title": {LangEN: "Activity", LangDE: "Aktivität"},
 	"log.count": {LangEN: "%d entries", LangDE: "%d Einträge"},
+	"log.late":  {LangEN: "reached the centre at %s", LangDE: "kam um %s in der Zentrale an"},
 	"log.when":  {LangEN: "When", LangDE: "Wann"},
 	"log.blade": {LangEN: "Blade", LangDE: "Blade"},
 	"log.what":  {LangEN: "Event", LangDE: "Ereignis"},
