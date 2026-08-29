@@ -22,6 +22,15 @@ ansible-playbook site.yml
 | `sheath_site_dhcp` | off by default, see below |
 | `sheath_site_enroll_code` | needed once per site, from the interface |
 
+## How Ansible reaches the machines
+
+The inventory names hosts, and by default your `~/.ssh/config` says how to
+reach each name — user, port, key, jump host — which keeps one answer in one
+place. Where a machine's address changes and the ssh config has not caught up,
+put the address in the inventory (`ansible_host=`), and remember that the ssh
+config block no longer matches then: the user and the key have to come with it
+(`ansible_user=`, `ansible_ssh_private_key_file=`).
+
 ## Bringing a site up
 
 A site needs a credential and asks for one rather than being handed one. On the
@@ -46,7 +55,30 @@ Where it is on, the site also serves TFTP and the netboot switch: an unknown
 blade may always netboot so it can enroll, a known one only when an
 installation was asked for.
 
+## Moving a site to another machine
+
+A site is not its machine. Enroll the new one with a fresh code — the site
+keeps its id, its blades and its history, and only the token changes — then
+update `sheath_site_relay_url` and run the playbook again. Take the old machine
+off the wire first if it serves DHCP: two DHCP servers in one segment is an
+outage, not an overlap.
+
+The netboot payload carries the site's address, and the site re-aims it when
+that address changes. Blades already sitting in the mini OS are pointed at the
+old one and stay there until they restart; blades that netboot afterwards find
+the new address by themselves.
+
 ## What the playbook will not do for you
+
+- **Give `/srv/sheath` its own room.** Images, the netboot payload and the
+  binaries a blade installs all live there, and on a site that mirrors two
+  images it is several gigabytes. The playbook creates the directory and
+  nothing else: whether it sits on the OS card, on an NVMe or on a USB stick
+  is a decision about the machine, and it belongs in that machine's `fstab`
+  with `nofail`. A tired USB stick is a bad place for it — one lost its
+  capacity mid-write, the filesystem went read-only, and the site went on
+  answering every question while it could no longer cache a thing. It says so
+  now, which is not the same as it not happening.
 
 - **Build the netboot payload.** `tools/build-bootimg.sh` runs on an arm64
   machine and writes into the centre's TFTP root; the sites fetch it from

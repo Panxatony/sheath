@@ -517,6 +517,13 @@ d8:3a:dd:xx:xx:xx,blade-r1s01,10.0.0.101,infinite
 > `systemctl reload dnsmasq` after every change. Skip the reload and the old
 > netboot state stays in effect.
 
+**`bind-dynamic`, not `bind-interfaces`.** Both listen only where they are
+told; they differ in what happens when the interface is not there yet.
+`bind-interfaces` resolves the name once at startup and refuses to start
+without it — `unknown interface eth0`, exit 2 — which is what a site server
+does on any boot where the address arrives a moment after the daemon. One did:
+it came up with a working relay, a dead DHCP server, and nothing to say so.
+
 **Two files, and who owns which.** The one the playbook lays down holds what
 never changes: the interface, the netboot switch, the TFTP root, the logging.
 The second — `/etc/dnsmasq.d/sheath-range.conf` — is written by `sheath-site`
@@ -1157,6 +1164,14 @@ A catalogue entry carries more than bytes:
 | `kernel` | `downstream` or `upstream` — an upstream-kernel image gets no fan or LED telemetry (§7) |
 | `min_disk` | bytes; an image cannot be assigned to a smaller disk |
 | `part_table` | `gpt` or `mbr`, read off the image's own first sector; a GPT image is refused for an eMMC or a card |
+
+Recipes recognise an image from its URL and record what is known about it
+before anybody has to find out. **Raspberry Pi OS Lite** is the useful case for
+a mixed fleet: Debian Trixie underneath, built by Raspberry Pi, so it carries a
+plain MBR and boots from an NVMe, an eMMC and a card alike — and the downstream
+kernel means the overlays apply, the fan reports, and `vcgencmd` is there, so
+the boot order can be read without sending the blade through the mini OS. It
+ships `sshd` switched off; the installer enables the unit.
 | `verified` | this image has actually booted on a blade |
 | `state`, `note` | `queued`, `working`, `ready` or `error`, with the last line of whatever failed |
 

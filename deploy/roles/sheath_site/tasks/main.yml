@@ -144,6 +144,24 @@
   # and a site that serves no relay has nothing to wait for either.
   when: not ansible_check_mode and sheath_site_listen | length > 0
 
+# The unit being active is not the same as DHCP being served: dnsmasq has come
+# up "active" with no interface to bind and served nothing, and it has died on
+# a reload and left the unit behind. The port is what a blade asks.
+- name: DHCP is actually being served
+  when: sheath_site_dhcp | bool and not ansible_check_mode
+  block:
+    - name: Someone is listening on port 67
+      ansible.builtin.command: ss -lun
+      register: udp_listeners
+      changed_when: false
+      retries: 5
+      delay: 3
+      until: udp_listeners.stdout is search(':67\s')
+
+    - name: Say so
+      ansible.builtin.debug:
+        msg: "DHCP is served on this machine"
+
 - name: What this site says about itself
   ansible.builtin.debug:
     msg: >-
