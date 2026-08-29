@@ -84,6 +84,7 @@ without a netboot installer, multi-distro would be ten times the manual work; wi
 | Reset | record only, the disk is not touched | Out of service and out of its slot; keeps serial number, hardware, token and history, so a blade that comes back from a cupboard is itself again. Forget removes the record and with it the token |
 | Shut down | `shutdown` command to the agent | Halts the blade for good; nothing in Sheath can switch it on again — a BladeRunner has no power control (issue #12). The blade is then **off**, not gone: no alert, its own word in the status column, cleared the moment an agent reports again |
 | Read the firmware | arms one blade for one netboot | For a blade whose running system cannot reach the firmware: the tag goes on, the blade restarts into the mini OS, says what it is, and restarts into its own system — nothing is written |
+| How long a blade may be silent | `offline_after_min`, per site | The health verdict and the sweep that marks a blade offline read the same number, from the blade's own site; a blade in no BladeRunner is judged by the global one |
 | Boot order in the inventory | read out through the firmware | The mini OS reads it on every netboot, the agent wherever `vcgencmd` is installed; a blade whose order does not name its install target is flagged |
 
 **Important:** the digits are read from the right, so `0xf26` means: try the NVMe first, fall through to netboot if the NVMe is
@@ -1031,15 +1032,7 @@ What remains open:
    view of the port available at all (§8). Independently of that: **portfast on all blade ports**,
    otherwise netboot becomes unreliable.
 5. **The NVMe models**, against the compatibility list in the Compute Blade documentation.
-6. **`no_clock_sync` is accepted and ignored.** The installer sets its clock from the server
-   before anything else — the mini OS has no RTC, starts at 1970, and every valid TLS certificate
-   is then "not yet valid". Because that happens before the job is fetched, the option that would
-   switch it off arrives too late to be read. Either move the option somewhere it can be read, or
-   drop it.
-7. **A blade's health is judged per site, but marked offline globally.** `offline_after_min` can
-   be overridden per site and is honoured when the health verdict is computed — but the sweep that
-   flips a blade's state to `offline` uses the global value. Two numbers that are meant to be one.
-8. **Observe, do not act:** Ubuntu's seed trick relies on `fs_label: system-boot` in
+6. **Observe, do not act:** Ubuntu's seed trick relies on `fs_label: system-boot` in
    `99-fake-cloud.cfg`; cloud-init has marked exactly that as deprecated since 24.3. Works today,
    keep an eye on it for 26.04. Only affects the cloud-init seeding step.
 

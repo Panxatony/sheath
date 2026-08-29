@@ -295,14 +295,54 @@ func (a *App) probes() {
 func (a *App) reaper() {
 	for {
 		time.Sleep(30 * time.Second)
-		cutoff := time.Now().UTC().Add(-a.globalPolicy().offlineAfter()).Format(time.RFC3339)
+		a.sweepOffline()
+	}
+}
+
+// sweepOffline flips the blades that have stopped reporting.
+//
+// How long a blade may be silent is a per-site number — a site on a link that
+// comes and goes is given a longer rope than one in the same building. The
+// health verdict has always read it from the site; this sweep read the global
+// one. So a site allowed twenty minutes of silence had its blades marked
+// offline after five and called unhealthy after twenty: two answers to the
+// same question, and the one people look at first was the wrong one.
+//
+// One statement per site, because the threshold differs per site and a single
+// cutoff cannot express that. Blades that stand in no BladeRunner belong to no
+// site and are judged by the global number.
+func (a *App) sweepOffline() {
+	total := int64(0)
+	flip := func(cutoff string, where string, args ...any) {
 		res, err := a.db.Exec(`UPDATE blades SET state='offline'
-			WHERE state='online' AND last_seen<>'' AND last_seen < ?`, cutoff)
-		if err == nil {
-			if n, _ := res.RowsAffected(); n > 0 {
-				a.logEvent("", "warn", fmt.Sprintf("%d blade(s) without heartbeat marked offline", n))
-			}
+			WHERE state='online' AND last_seen<>'' AND last_seen < ? AND `+where,
+			append([]any{cutoff}, args...)...)
+		if err != nil {
+			return
 		}
+		n, _ := res.RowsAffected()
+		total += n
+	}
+	cutoffFor := func(p Policy) string {
+		return time.Now().UTC().Add(-p.offlineAfter()).Format(time.RFC3339)
+	}
+
+	sites, err := a.listSites()
+	if err != nil {
+		// Without the list there is still a fleet to watch; the global number
+		// is the same answer it gave before there were sites at all.
+		flip(cutoffFor(a.globalPolicy()), "1=1")
+		return
+	}
+	for _, st := range sites {
+		flip(cutoffFor(a.sitePolicy(st.ID)),
+			`rack_id IN (SELECT id FROM racks WHERE site_id=?)`, st.ID)
+	}
+	flip(cutoffFor(a.globalPolicy()),
+		`(rack_id IS NULL OR rack_id NOT IN (SELECT id FROM racks))`)
+
+	if total > 0 {
+		a.logEvent("", "warn", fmt.Sprintf("%d blade(s) without heartbeat marked offline", total))
 	}
 }
 

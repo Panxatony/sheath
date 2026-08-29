@@ -1160,7 +1160,7 @@ func (a *App) installOptions(b *Blade) map[string]any {
 	out := map[string]any{}
 	for _, key := range []string{
 		"no_grow", "require_checksum", "no_root_keys", "no_cloud_init",
-		"no_agent", "no_clock_sync",
+		"no_agent",
 	} {
 		if v, ok := a.installSetting(b, key).(bool); ok && v {
 			out[key] = true

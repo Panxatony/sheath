@@ -86,7 +86,6 @@ type installOpts struct {
 	NoRootKeys  bool `json:"no_root_keys"`
 	NoCloudInit bool `json:"no_cloud_init"`
 	NoAgent     bool `json:"no_agent"`
-	NoClockSync bool `json:"no_clock_sync"`
 	// RebootDelay in seconds before the machine restarts, so a console can be
 	// read. 0 means the default of five seconds.
 	RebootDelay int `json:"reboot_delay"`
@@ -560,6 +559,11 @@ func localIP() string {
 // an error that looks like a certificate problem and is really a clock
 // problem. The Date header of any HTTP response is enough to fix it; it costs
 // one request and no dependency.
+//
+// There is no option to skip it, and the one that used to be declared —
+// no_clock_sync, read nowhere — could not have worked: this runs before the
+// job is fetched, so a blade that skipped it could not have fetched the very
+// job that told it to.
 func (c *client) syncClock() {
 	if time.Now().Year() >= 2024 {
 		return
