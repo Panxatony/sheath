@@ -2,6 +2,20 @@
 
 Management for [Compute Blades](https://docs.computeblade.com/) in BladeRunner chassis.
 
+> **Not the official one** — Uptime Lab, who make the Compute Blade, are
+> building **Orchestrator**: a platform for provisioning and managing clusters
+> of nodes, bare metal and virtual machines as well as Raspberry Pi fleets. Its
+> public issue tracker is at
+> [uptime-lab/orchestrator-tracker](https://github.com/uptime-lab/orchestrator-tracker),
+> and if you are looking for a supported product, look there.
+>
+> Sheath is a **proof of concept** for one particular rack: the local
+> environment of [Panxatony](https://github.com/Panxatony), two sites and a
+> dozen blades. It exists because that environment had questions worth
+> answering in code, and everything in it was tried on that hardware. It is
+> not a product, it carries no promise of support, and it is published in case
+> the answers are useful to somebody else.
+
 > **How this was built** — the code in this repository was written by
 > [Claude](https://claude.com/claude-code) (Anthropic), working from the ideas,
 > the design decisions and the review of [Panxatony](https://github.com/Panxatony),
