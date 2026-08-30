@@ -5,17 +5,49 @@ on `main`.
 
 ## Unreleased
 
-### Fixed
-- A blade with only an eMMC no longer has to be told where to install. The
-  target defaulted to `/dev/nvme0n1` whatever the blade had, so a module
-  without an NVMe was refused — for want of a setting that could only have had
-  one value. A setting still wins where somebody made one; where nobody has,
-  the blade decides from what it reported, and a blade that has said nothing
-  keeps the old default so the installer can find out for itself.
-- Both refusals name the blade. "This blade has no /dev/nvme0n1" is no use on
-  a page listing ten of them.
+## v0.8.3-alpha — 2026-08-30
+
+The week the fleet stopped being uniform and Sheath had to say so out loud.
+Three blades wrote their image without an error and then booted from nowhere;
+a site answered every question for five hours while its disk had gone
+read-only; nine blades netbooted into an address their site no longer had.
+None of that was visible from the interface, and most of this release is about
+that: the things a machine knew and never said.
 
 ### Added
+- **Accounts, and two roles.** An operator installs blades, reinstalls them,
+  calls an installation off and takes one out of service. An admin does that
+  and everything that decides what the fleet *is*. The boundary is one table
+  of actions, and an action nobody has classified needs an admin. Passwords
+  are PBKDF2-HMAC-SHA256 with a salt each, from the standard library. The
+  admin token still signs in, with the admin role and no name: it is how the
+  first account is made and how somebody gets back in.
+- **The log says who did it.** Two roles are worth having only if it can.
+- **The boot order, read out of the EEPROM** and shown in the inventory, in
+  words: `network → NVMe → SD/eMMC → start over`. A blade whose order does not
+  name the device its image goes on is flagged, because it will write the
+  image and then boot from nowhere. The agent reads it where `vcgencmd` exists;
+  the mini OS reads it on every netboot, which is the case that matters — a
+  blade that has never been installed still has one on file.
+- **Read the firmware**: arms one blade for one netboot so the mini OS can read
+  what the running system cannot, then takes the tag off again. Two restarts,
+  nothing written.
+- **Shut down** next to identify and reboot, and **Reset** — out of service and
+  into storage, keeping the serial number, the token and the history. Forget
+  stays what it is: the hardware is gone.
+- **The partition table of every image** is read and remembered. An image with
+  a GPT is refused for an eMMC or a card before the hour of writing rather
+  than after it, and the choice is checked where it is made rather than only
+  at the install.
+- **Raspberry Pi OS Lite** as a recipe: Debian Trixie with a plain MBR, so it
+  boots from an NVMe, an eMMC and a card alike, and with the downstream kernel,
+  so the overlays apply and the boot order is readable without the mini OS.
+- **A site says what is wrong with it.** Every pass it proves it can write to
+  the five directories it needs and that something is listening on port 67 —
+  and starts dnsmasq again where it can. A site that cannot is shown as
+  "cannot write" rather than online.
+- Whether anybody could get a shell: `sshd` present, running, listening, and
+  how many host keys there are. Dropbear counts as an SSH server.
 - **The mini OS has a recipe.** It was an heirloom — a kernel and a 43 MB
   ramdisk assembled once and copied from machine to machine, with nobody able
   to say which kernel it was or how the ramdisk had been made. It turns out to
@@ -36,6 +68,38 @@ on `main`.
   site's own names, rather than the upstream one it was being handed before.
 
 ### Fixed
+- **cloud-init was locking root out of every blade it seeded.** Its default is
+  to take the keys it is handed, put them on the default user and rewrite
+  root's authorized_keys behind a forced command. The seed was closing the door
+  it had just opened.
+- **A payload aimed at an address the site no longer had.** Moving a site left
+  every netbooting blade talking to a machine that was not there. The aim is
+  checked as well as the payload stamp.
+- **dnsmasq lost the boot race** — `bind-interfaces` resolves the interface
+  once and refuses to start without it, so a site server came up with a working
+  relay and no DHCP. `bind-dynamic` waits for the interface.
+- **An outage arrived as a burst of lines all dated the moment it ended.** The
+  time a site gives is kept, and the delivery time with it.
+- **offline_after_min** is now read per site by the sweep that marks a blade
+  offline, not only by the health verdict.
+- A card in the slot no longer reads as "Lite (no eMMC)": an eMMC and an SD
+  card are told apart, with the part name beside the size.
+- The mini OS could not run any program: the kernel starts it with no PATH, so
+  every reading that needed one came back empty and silent.
+- A blade switched off on purpose is **off**, not gone: no alert, its own word,
+  and any standing alert cleared with it.
+- Forget refuses a blade that is still running, and says what it costs — it
+  deletes the token an installed system cannot get back.
+- The session cookie is `Secure` where the request arrived over TLS.
+- The footer shows the version instead of the centre's network.
+- A blade with only an eMMC no longer has to be told where to install. The
+  target defaulted to `/dev/nvme0n1` whatever the blade had, so a module
+  without an NVMe was refused — for want of a setting that could only have had
+  one value. A setting still wins where somebody made one; where nobody has,
+  the blade decides from what it reported, and a blade that has said nothing
+  keeps the old default so the installer can find out for itself.
+- Both refusals name the blade. "This blade has no /dev/nvme0n1" is no use on
+  a page listing ten of them.
 - **An installed blade talks to its own site now, not to the centre.** The
   installer wrote whatever address the centre named into the seed, and the
   centre naturally named itself — so the relay standing in the same room
@@ -53,6 +117,17 @@ on `main`.
   checking that the new one answers, because an address that does not answer
   is a blade gone quiet, and a quiet blade cannot be told to come back. The
   move is reported like any other applied change.
+
+### Removed
+- `no_clock_sync`, declared and never read, and unable to work as written: the
+  clock is set before the job that would switch it off is fetched.
+
+### Deployment
+- The playbook could not have brought up a freshly imaged machine: a dry run
+  failed on the unit that check mode had not written, and the real run on a
+  package index older than the pool it was fetching from. Both fixed, and it
+  now checks that DHCP is actually being served where it was asked for.
+
 
 ## v0.8.2-alpha — 2026-08-27
 
