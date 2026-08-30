@@ -372,6 +372,7 @@ func (a *App) hUI(w http.ResponseWriter, r *http.Request) {
 	render(w, overviewTmpl, map[string]any{
 		"L":          l,
 		"Path":       "/",
+		"Admin":      a.isAdmin(r),
 		"LocalSite":  a.localSiteID(),
 		"Netboot":    nb,
 		"Images":     images,
@@ -683,6 +684,7 @@ func (a *App) hRackPage(w http.ResponseWriter, r *http.Request) {
 	render(w, rackTmpl, map[string]any{
 		"L":         l,
 		"Path":      "/bladerunners/" + strconv.FormatInt(id, 10),
+		"Admin":     a.isAdmin(r),
 		"LocalSite": a.localSiteID(),
 		"R":         rv,
 		"Free":      free,
@@ -690,7 +692,9 @@ func (a *App) hRackPage(w http.ResponseWriter, r *http.Request) {
 		"Msg":       msg,
 		"Err":       errMsg,
 		"Sites":     a.siteChoices(),
-		"CanWipe":   !a.sitePolicy(rk.SiteID).NoWipe,
+		// Erasing destroys data, so it takes both: a site that allows it at
+		// all, and an administrator asking.
+		"CanWipe":   !a.sitePolicy(rk.SiteID).NoWipe && a.isAdmin(r),
 		"Log":       buildLog(events, l),
 		"CanDelete": rv.Used == 0,
 		"Open":      a.adminToken == "",
@@ -861,6 +865,8 @@ type logView struct {
 	// the centre finally heard about it. Every other line stays as short as
 	// it was.
 	Late string
+	// Who did it, where a person did rather than the server itself.
+	By string
 }
 
 // buildLog turns the stored events into something readable: the slot instead
@@ -886,6 +892,7 @@ func buildLog(rows []EventRow, l Lang) []logView {
 		if r, err := time.Parse(time.RFC3339, e.Received); err == nil {
 			lv.Late = fmt.Sprintf(T(l, "log.late"), r.Local().Format("15:04:05"))
 		}
+		lv.By = e.Actor
 		out = append(out, lv)
 	}
 	return out
@@ -1128,6 +1135,10 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 	}
 	to := bladePage(b, r)
 	if kind == "wipe" {
+		if !a.mayAct(r, kind) {
+			redirectMsg(w, r, to, "err", T(l, "err.notallowed"))
+			return
+		}
 		a.hUIBladeWipe(w, r)
 		return
 	}
@@ -1135,6 +1146,12 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 	case "identify", "identify_off", "stealth_on", "stealth_off", "reboot", "shutdown", "reimage", "cancel", "probe", "reset":
 	default:
 		redirectMsg(w, r, to, "err", T(l, "err.unknownact"))
+		return
+	}
+	// The role decides which of them, and the table it reads is the boundary
+	// — not the buttons the page happens to draw.
+	if !a.mayAct(r, kind) {
+		redirectMsg(w, r, to, "err", T(l, "err.notallowed"))
 		return
 	}
 	if kind == "reset" {
@@ -1182,7 +1199,7 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 			redirectMsg(w, r, to, "err", errText(l, err))
 			return
 		}
-		a.logEvent(serial, "info", "install requested")
+		a.logActed(a.actor(r), serial, "info", "install requested")
 		redirectMsg(w, r, to, "msg", T(l, "msg.installrequested", b.Image))
 		return
 	}
@@ -1191,7 +1208,7 @@ func (a *App) hUIBladeAction(w http.ResponseWriter, r *http.Request) {
 		redirectMsg(w, r, to, "err", err.Error())
 		return
 	}
-	a.logEvent(serial, "info", "command queued: "+kind)
+	a.logActed(a.actor(r), serial, "info", "command queued: "+kind)
 	redirectMsg(w, r, to, "msg", T(l, "msg.queued", kind))
 }
 
@@ -1862,6 +1879,7 @@ const navBar = `<nav class="nav" aria-label="{{t .L "nav.label"}}">
   <a href="/"{{if eq .Path "/"}} class="here" aria-current="page"{{end}}>{{t .L "nav.overview"}}</a>
   <a href="/map"{{if eq .Path "/map"}} class="here" aria-current="page"{{end}}>{{t .L "nav.map"}}</a>
   <a href="/inventory"{{if eq .Path "/inventory"}} class="here" aria-current="page"{{end}}>{{t .L "inv.title"}}</a>
+  {{if .Admin}}<a href="/users"{{if eq .Path "/users"}} class="here" aria-current="page"{{end}}>{{t .L "nav.users"}}</a>{{end}}
   <a href="/images"{{if eq .Path "/images"}} class="here" aria-current="page"{{end}}>{{t .L "img.title"}}</a>
   <a href="/settings"{{if eq .Path "/settings"}} class="here" aria-current="page"{{end}}>{{t .L "set.title"}}</a>
   {{if .LocalSite}}<a href="/sites/{{.LocalSite}}"{{if hasPrefix .Path "/sites/"}} class="here" aria-current="page"{{end}}>{{t .L "site.title"}}</a>{{end}}
@@ -2228,8 +2246,10 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
                   <form method="post" action="/blades/{{.Serial}}/actions/reimage">
                     <button class="mini" type="submit" title="{{t $top.L "act.installtip"}}">{{t $top.L "act.install"}}</button></form>
                   {{end}}
+                  {{if $top.Admin}}
                   <form method="post" action="/blades/{{.Serial}}/unassign">
                     <button class="mini danger" type="submit">{{t $top.L "act.remove"}}</button></form>
+                  {{end}}
                 </div>
                 <div class="menu-row">
                   <form method="post" action="/blades/{{.Serial}}/actions/reset"
@@ -2323,7 +2343,7 @@ var rackTmpl = template.Must(template.New("rack").Funcs(tmplFuncs).Parse(headHTM
           <td class="mono nowrap">{{.When}}{{if .Ago}}<span class="hint"> · {{.Ago}}</span>{{end}}</td>
           <td class="mono">{{.Slot}}</td>
           <td class="mono">{{.Name}}</td>
-          <td><span class="led {{.LED}}"></span>{{.Msg}}{{if .Late}}<span class="hint"> · {{.Late}}</span>{{end}}</td>
+          <td><span class="led {{.LED}}"></span>{{.Msg}}{{if .By}}<span class="hint"> · {{.By}}</span>{{end}}{{if .Late}}<span class="hint"> · {{.Late}}</span>{{end}}</td>
         </tr>
       {{end}}</tbody>
     </table>
@@ -2364,8 +2384,16 @@ var loginTmpl = template.Must(template.New("login").Funcs(tmplFuncs).Parse(headH
 <div class="card"><div class="body">
   <form method="post" action="/login">
     <input type="hidden" name="next" value="{{.Next}}">
+    {{if .HaveUsers}}
+    <label for="us">{{t .L "login.user"}}</label>
+    <input id="us" name="user" autofocus autocomplete="username" spellcheck="false">
+    <label for="tk" style="margin-top:.8rem">{{t .L "usr.password"}}</label>
+    <input id="tk" type="password" name="token" autocomplete="current-password" required>
+    <p class="hint" style="margin:.6rem 0 0">{{t .L "login.astoken"}}</p>
+    {{else}}
     <label for="tk">{{t .L "login.token"}}</label>
     <input id="tk" type="password" name="token" autofocus autocomplete="current-password" required>
+    {{end}}
     <div style="margin-top:1.1rem"><button type="submit">{{t .L "login.submit"}}</button></div>
   </form>
   <p class="hint" style="margin:1.4rem 0 0">{{th .L "login.hint"}}</p>
@@ -2458,6 +2486,7 @@ func (a *App) hTopology(w http.ResponseWriter, r *http.Request) {
 	render(w, topoTmpl, map[string]any{
 		"L":         l,
 		"Path":      "/map",
+		"Admin":     a.isAdmin(r),
 		"LocalSite": a.localSiteID(),
 		"Sites":     views,
 		"SVG":       topoSVG(l, views, a.baseURL),
@@ -2850,6 +2879,7 @@ func (a *App) hSitePage(w http.ResponseWriter, r *http.Request) {
 		"SiteVer":   st.SiteVersion,
 		"L":         l,
 		"Path":      "/sites/" + strconv.FormatInt(id, 10),
+		"Admin":     a.isAdmin(r),
 		"LocalSite": a.localSiteID(),
 		"S":         *st,
 		"Net":       st.NetBase + ".0/24",
@@ -2909,6 +2939,7 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
 {{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
 {{if not .HasToken}}<div class="bad">{{t .L "site.notoken"}}</div>{{end}}
 
+{{if .Admin}}
 <div class="card">
   <div class="card-head"><h2>{{t .L "enr.title"}}</h2>
     <span class="tag">{{if .Code}}{{.CodeLeft}}{{else}}{{t .L "enr.gone"}}{{end}}</span></div>
@@ -2924,6 +2955,7 @@ var siteTmpl = template.Must(template.New("site").Funcs(tmplFuncs).Parse(headHTM
     {{end}}
   </div>
 </div>
+{{end}}
 
 {{if .Trouble}}
 <div class="card">
@@ -3149,7 +3181,7 @@ func (a *App) hSettings(w http.ResponseWriter, r *http.Request) {
 		last = bk.Last.Local().Format("2006-01-02 15:04") + " · " + human(bk.Size)
 	}
 	render(w, settingsTmpl, map[string]any{
-		"L": l, "Path": "/settings", "LocalSite": a.localSiteID(),
+		"L": l, "Path": "/settings", "LocalSite": a.localSiteID(), "Admin": a.isAdmin(r),
 		"S": sv, "Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
 		"BK": bk, "BKLast": last,
 		"NF": mc, "HasPass": mc.Pass != "", "Alerts": alerts,
@@ -3278,6 +3310,91 @@ func strOrNil(s string) any {
 	}
 	return s
 }
+
+var usersTmpl = template.Must(template.New("users").Funcs(tmplFuncs).Parse(headHTML + `
+<div class="wrap">
+<header class="top">` + brandBar + `
+<div class="pagehead">
+  <h1>{{t .L "usr.title"}}</h1>
+  <p class="sub">{{t .L "usr.lead"}}</p>
+</div>
+</header>
+
+{{if .Msg}}<div class="note">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="bad">{{.Err}}</div>{{end}}
+{{if .TokenUser}}<div class="note">{{t .L "usr.astoken"}}</div>{{end}}
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "usr.accounts"}}</h2></div>
+  {{if .Rows}}
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>{{t .L "usr.name"}}</th><th>{{t .L "usr.role"}}</th>
+      <th>{{t .L "usr.last"}}</th><th>{{t .L "usr.password"}}</th><th></th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td><b>{{.Name}}</b>{{if .Me}} <span class="hint">{{t $.L "usr.you"}}</span>{{end}}
+          {{if .Disabled}}<div><span class="chip warn">{{t $.L "usr.off"}}</span></div>{{end}}</td>
+        <td>
+          <form method="post" action="/users/{{.Name}}/role" class="inline">
+            <select name="role" aria-label="{{t $.L "usr.role"}}">
+              <option value="operator"{{if eq (printf "%s" .Role) "operator"}} selected{{end}}>{{t $.L "role.operator"}}</option>
+              <option value="admin"{{if eq (printf "%s" .Role) "admin"}} selected{{end}}>{{t $.L "role.admin"}}</option>
+            </select>
+            <button class="mini ghost" type="submit">{{t $.L "usr.set"}}</button></form></td>
+        <td class="mono">{{if .Last}}{{.Last}}{{else}}<span class="hint">{{t $.L "usr.never"}}</span>{{end}}</td>
+        <td>
+          <form method="post" action="/users/{{.Name}}/password" class="inline">
+            <input type="password" name="password" autocomplete="new-password"
+                   placeholder="{{t $.L "usr.newpw"}}" minlength="10">
+            <button class="mini ghost" type="submit">{{t $.L "usr.set"}}</button></form></td>
+        <td class="right">
+          {{if .Disabled}}
+          <form method="post" action="/users/{{.Name}}/disable" class="inline">
+            <input type="hidden" name="off" value="0">
+            <button class="mini ghost" type="submit">{{t $.L "usr.enable"}}</button></form>
+          {{else}}
+          <form method="post" action="/users/{{.Name}}/disable" class="inline">
+            <button class="mini ghost" type="submit">{{t $.L "usr.disable"}}</button></form>
+          {{end}}
+          <form method="post" action="/users/{{.Name}}/delete" class="inline"
+                onsubmit="return confirm('{{printf (t $.L "usr.delask") .Name}}')">
+            <button class="mini danger" type="submit">{{t $.L "usr.delete"}}</button></form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<div class="body"><p class="hint">{{t .L "usr.none"}}</p></div>{{end}}
+  <div class="body"><p class="hint" style="margin:0">{{t .L "usr.hint"}}</p></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{t .L "usr.add"}}</h2></div>
+  <div class="body">
+    <form method="post" action="/users">
+      <div class="setgrid">
+        <label for="name">{{t .L "usr.name"}}</label>
+        <input id="name" name="name" required minlength="2" maxlength="32" pattern="[A-Za-z0-9._-]+">
+        <label for="password">{{t .L "usr.password"}}</label>
+        <input id="password" type="password" name="password" required minlength="10"
+               autocomplete="new-password">
+        <label for="role">{{t .L "usr.role"}}</label>
+        <select id="role" name="role">
+          <option value="operator">{{t .L "role.operator"}}</option>
+          <option value="admin">{{t .L "role.admin"}}</option>
+        </select>
+      </div>
+      <div class="actions"><button type="submit">{{t .L "usr.create"}}</button></div>
+    </form>
+  </div>
+</div>
+
+<footer><span><a href="/settings">← {{t .L "set.title"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
+<span class="mono">{{ver}}</span></footer>
+</div></body></html>`))
 
 var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse(headHTML + `
 <div class="wrap">
@@ -3427,6 +3544,14 @@ var settingsTmpl = template.Must(template.New("settings").Funcs(tmplFuncs).Parse
   </div>
 </div>
 
+<div class="card">
+  <div class="card-head"><h2>{{t .L "usr.title"}}</h2></div>
+  <div class="body">
+    <p class="hint" style="margin:0 0 .8rem">{{t .L "usr.lead"}}</p>
+    <a class="btn" href="/users">{{t .L "usr.title"}} →</a>
+  </div>
+</div>
+
 <footer><span><a href="/">← {{t .L "nav.overview"}}</a><br><span class="tm">{{t .L "foot.tm"}}</span></span>
 <span>{{t .L "foot.api"}}</span>
 <span class="mono">{{ver}}</span></footer>
@@ -3521,7 +3646,7 @@ func (a *App) hImagesPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	render(w, imagesTmpl, map[string]any{
-		"L": l, "Path": "/images", "LocalSite": a.localSiteID(),
+		"L": l, "Path": "/images", "LocalSite": a.localSiteID(), "Admin": a.isAdmin(r),
 		"Rows": rows, "Known": known, "Refresh": working,
 		"Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
 	})
@@ -3731,7 +3856,7 @@ func (a *App) hInventory(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, errMsg := flash(r)
 	render(w, inventoryTmpl, map[string]any{
-		"L": l, "Path": "/inventory", "LocalSite": a.localSiteID(),
+		"L": l, "Path": "/inventory", "LocalSite": a.localSiteID(), "Admin": a.isAdmin(r),
 		"Rows": rows, "Sum": sum, "Unknown": unknown,
 		"Msg": msg, "Err": errMsg, "Open": a.adminToken == "",
 	})
@@ -3806,7 +3931,7 @@ var inventoryTmpl = template.Must(template.New("inv").Funcs(tmplFuncs).Parse(hea
           <div class="mono sub2">{{.Kernel}}</div>
           {{if .SSH}}<div>{{if .SSHBad}}<span class="chip warn">{{.SSH}}</span>{{else}}<span class="hint">{{.SSH}}</span>{{end}}</div>{{end}}</td>
         <td class="right">
-          {{if .Unused}}
+          {{if and .Unused $.Admin}}
           <form method="post" action="/inventory/{{.Serial}}/forget"
                 onsubmit="return confirm('{{printf (t $.L "inv.forgetask") (or .Hostname .Serial)}}')">
             <button class="ghost danger">{{t $.L "inv.forget"}}</button></form>

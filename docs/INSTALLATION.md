@@ -904,6 +904,37 @@ outright — that is the only case where forgetting does lasting damage, and
 someone in that position meant either "put it away" (reset) or "it is really
 leaving" (shut it down first).
 
+**Accounts, and two roles.** Sheath began with one credential: whoever had the
+admin token had the fleet, and nothing recorded who had used it. That is
+defensible for a page on the LAN and wrong as soon as there is a second pair of
+hands or a reverse proxy in front.
+
+An **operator** does the work at the rack: install a blade, reinstall it, call
+an installation off, take one out of service, and the small things that go with
+it — identify, reboot, shut down, read the firmware, choose the image and the
+device for the blade being installed. An **admin** does that and everything
+that decides what the fleet is: sites, BladeRunners, images, policy,
+notifications, backups, accounts, erasing a disk, and removing a blade from the
+inventory.
+
+The boundary is a table of actions in one place (`actionNeeds`), and an action
+nobody has classified needs an admin — a new one must not become everybody's by
+omission. The guard sits on the route; hiding a button is only so that nobody
+walks into a dead end.
+
+Passwords are stored as PBKDF2-HMAC-SHA256 with a salt of their own — in the
+standard library since Go 1.24, so no new dependency. The **admin token keeps
+working**: it signs in with the admin role and no name, which is how the first
+account gets created and how somebody gets back in after locking themselves
+out. It is a file on the server, so anybody who can read it could edit the
+database anyway; it is a recovery route rather than an account, and it is
+deliberately not counted when Sheath refuses to remove the last administrator
+who can still sign in.
+
+The session cookie is marked `Secure` where the request arrived over TLS, and
+not where it did not — set unconditionally it would lock out the plain-HTTP
+address on the LAN, which is how the server is reached from inside.
+
 **Out of service is not gone either.** Between "this blade is in service" and
 "this hardware no longer exists" there was nothing, and people reached for
 Forget — which deletes the record and with it the blade's token, so an already

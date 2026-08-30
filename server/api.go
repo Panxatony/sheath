@@ -1538,7 +1538,7 @@ func (a *App) hHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) hEvents(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query(`SELECT ts,serial,level,msg,received FROM events ORDER BY ts DESC, id DESC LIMIT 200`)
+	rows, err := a.db.Query(`SELECT ts,serial,level,msg,received,actor FROM events ORDER BY ts DESC, id DESC LIMIT 200`)
 	if err != nil {
 		fail(w, 500, "%v", err)
 		return
@@ -1547,7 +1547,7 @@ func (a *App) hEvents(w http.ResponseWriter, r *http.Request) {
 	out := []EventRow{}
 	for rows.Next() {
 		var e EventRow
-		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg, &e.Received); err == nil {
+		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg, &e.Received, &e.Actor); err == nil {
 			out = append(out, e)
 		}
 	}

@@ -186,6 +186,7 @@ var migrations = []string{
 	`ALTER TABLE blades ADD COLUMN stored TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN trouble TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE events ADD COLUMN received TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE events ADD COLUMN actor TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sites ADD COLUMN site_version TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE images ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
@@ -344,7 +345,7 @@ func openDB(path string) (*sql.DB, error) {
 	// WAL plus busy_timeout carry the concurrency.
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(4)
-	for _, ddl := range []string{schema, netbootSchema} {
+	for _, ddl := range []string{schema, netbootSchema, userSchema} {
 		if _, err := db.Exec(ddl); err != nil {
 			return nil, fmt.Errorf("schema: %w", err)
 		}
@@ -466,6 +467,17 @@ func (a *App) logEvent(serial, level, msg string) {
 		now(), serial, level, msg)
 }
 
+// logActed records what a person did, with their name on it. Two roles are
+// worth having only if the log can say which of them was at the keyboard;
+// before this, "install requested" was never attributable to anybody.
+//
+// An empty actor is the machine acting on its own — a health sweep, a site
+// reporting in — and reads as such.
+func (a *App) logActed(actor, serial, level, msg string) {
+	_, _ = a.db.Exec(`INSERT INTO events(ts,serial,level,msg,actor) VALUES(?,?,?,?,?)`,
+		now(), serial, level, msg, actor)
+}
+
 // logEventAt keeps the time something happened, which is not always the time
 // the centre heard about it.
 //
@@ -524,6 +536,8 @@ type EventRow struct {
 	// happened: a line that waited out an outage at its site says so, and
 	// every other line stays as short as it was.
 	Received string `json:"received,omitempty"`
+	// Who did it, where a person did. Empty is the machine acting on its own.
+	Actor    string `json:"actor,omitempty"`
 	Hostname string `json:"hostname,omitempty"`
 	Slot     *int   `json:"slot,omitempty"`
 }
@@ -536,7 +550,7 @@ type EventRow struct {
 // blades, not of the enclosure.
 func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
 	rows, err := a.db.Query(`
-		SELECT e.ts, e.serial, e.level, e.msg, e.received, b.hostname, b.slot
+		SELECT e.ts, e.serial, e.level, e.msg, e.received, e.actor, b.hostname, b.slot
 		  FROM events e
 		  JOIN blades b ON b.serial = e.serial
 		 WHERE b.rack_id = ?
@@ -550,7 +564,7 @@ func (a *App) rackEvents(rackID int64, limit int) ([]EventRow, error) {
 	for rows.Next() {
 		var e EventRow
 		if err := rows.Scan(&e.TS, &e.Serial, &e.Level, &e.Msg, &e.Received,
-			&e.Hostname, &e.Slot); err != nil {
+			&e.Actor, &e.Hostname, &e.Slot); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
