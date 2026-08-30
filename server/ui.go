@@ -3376,18 +3376,19 @@ var usersTmpl = template.Must(template.New("users").Funcs(tmplFuncs).Parse(headH
   <div class="body">
     <form method="post" action="/users">
       <div class="setgrid">
-        <label for="name">{{t .L "usr.name"}}</label>
-        <input id="name" name="name" required minlength="2" maxlength="32" pattern="[A-Za-z0-9._-]+">
-        <label for="password">{{t .L "usr.password"}}</label>
-        <input id="password" type="password" name="password" required minlength="10"
-               autocomplete="new-password">
-        <label for="role">{{t .L "usr.role"}}</label>
-        <select id="role" name="role">
-          <option value="operator">{{t .L "role.operator"}}</option>
-          <option value="admin">{{t .L "role.admin"}}</option>
-        </select>
+        <div><label for="name">{{t .L "usr.name"}}</label>
+          <input id="name" name="name" required minlength="2" maxlength="32"
+                 pattern="[A-Za-z0-9._-]+" autocomplete="username" spellcheck="false"></div>
+        <div><label for="password">{{t .L "usr.password"}}</label>
+          <input id="password" type="password" name="password" required minlength="10"
+                 autocomplete="new-password"></div>
+        <div><label for="role">{{t .L "usr.role"}}</label>
+          <select id="role" name="role">
+            <option value="operator">{{t .L "role.operator"}}</option>
+            <option value="admin">{{t .L "role.admin"}}</option>
+          </select></div>
       </div>
-      <div class="actions"><button type="submit">{{t .L "usr.create"}}</button></div>
+      <div style="margin-top:1.2rem"><button type="submit">{{t .L "usr.create"}}</button></div>
     </form>
   </div>
 </div>

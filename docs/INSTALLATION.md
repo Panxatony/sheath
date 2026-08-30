@@ -904,6 +904,16 @@ outright — that is the only case where forgetting does lasting damage, and
 someone in that position meant either "put it away" (reset) or "it is really
 leaving" (shut it down first).
 
+**The interface behind a reverse proxy.** Sheath serves plain HTTP and expects
+something in front of it where it is reachable from outside. Two things matter
+there. The health check should be `GET /healthz` — it answers `200 ok` without
+a session, and a TCP connect only proves that a process is listening, which a
+server with a broken database also does. And the proxy carries the **interface
+only**: sites and blades fetch images, the netboot payload and the agent
+binaries straight from the centre's own address, hundreds of megabytes at a
+time, and `--base-url` names that address deliberately. A redirect that pulls
+that traffic through the proxy would be a slow way to break installations.
+
 **Accounts, and two roles.** Sheath began with one credential: whoever had the
 admin token had the fleet, and nothing recorded who had used it. That is
 defensible for a page on the LAN and wrong as soon as there is a second pair of
