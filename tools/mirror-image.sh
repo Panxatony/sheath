@@ -18,9 +18,20 @@ set -euo pipefail
 # a tool that silently works in the wrong directory is worse than one that
 # refuses to start.
 ROOT=${SHEATH_ROOT:-/srv/sheath}
-case "${1:-}" in
---root=*) ROOT=${1#--root=}; shift ;;
-esac
+# --raw leaves an image out of an archive uncompressed. It is for the case
+# where preparation follows: prepare-image.sh has to unpack the image to change
+# it and compresses the result itself, so compressing here as well is ten
+# minutes of a Compute Module's CPU spent on a file nobody will ever read. It
+# is passed as an argument rather than an environment variable because sudo
+# resets the environment.
+RAW=""
+while :; do
+  case "${1:-}" in
+  --root=*) ROOT=${1#--root=}; shift ;;
+  --raw)    RAW=1; shift ;;
+  *) break ;;
+  esac
+done
 DIR="$ROOT/images"
 ID=${1:?usage: mirror-image.sh <id> <url> [os-id]}
 URL=${2:?usage: mirror-image.sh <id> <url> [os-id]}
@@ -56,12 +67,20 @@ case "$BASE" in
     -printf '%s %p\n' | sort -rn | head -1 | cut -d' ' -f2-)
   [ -n "$INNER" ] || { echo "no disk image found inside $BASE" >&2; exit 1; }
   say "found $(basename "$INNER") ($(( $(stat -c%s "$INNER") / 1048576 )) MB raw)"
-  # Compressed, because the blade pulls it over the network and unpacks it
-  # while writing anyway. -T0 -3 rather than -9: on a CM4 the difference in
-  # size is minutes of CPU, the difference in transfer is seconds.
-  FILE="$ID.img.xz"
-  say "compressing to $FILE"
-  xz -T0 -3 -c "$INNER" > "$DIR/$FILE.part"
+  if [ -n "$RAW" ]; then
+    # Somebody is going to unpack this again in a minute. Hand it over as it
+    # is; the step that changes it compresses the result.
+    FILE="$ID.img"
+    say "leaving it raw as $FILE — preparation follows"
+    mv "$INNER" "$DIR/$FILE.part"
+  else
+    # Compressed, because the blade pulls it over the network and unpacks it
+    # while writing anyway. -T0 -3 rather than -9: on a CM4 the difference in
+    # size is minutes of CPU, the difference in transfer is seconds.
+    FILE="$ID.img.xz"
+    say "compressing to $FILE"
+    xz -T0 -3 -c "$INNER" > "$DIR/$FILE.part"
+  fi
   ;;
 *)
   FILE="$BASE"

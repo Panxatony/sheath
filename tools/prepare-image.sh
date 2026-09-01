@@ -144,9 +144,22 @@ sudo umount "$MNT"
 sudo e2fsck -fp "$ROOTDEV" >/dev/null 2>&1 || true
 sudo losetup -d "$LOOP"; LOOP=""
 
+# Where the mirror handed the image over raw, this is the only compression
+# there is, and the prepared file takes the name a blade will fetch. The raw
+# one goes when the compressed one is in place, and not before: a failure
+# between the two should leave something to start again from.
+OUT="$FILE"
+case "$FILE" in
+*.img) OUT="$FILE.xz" ;;
+esac
+
 say "compressing"
-xz -T0 -3 -c "$WORK/disk.img" > "$DIR/$FILE.part"
-mv "$DIR/$FILE.part" "$DIR/$FILE"
+xz -T0 -3 -c "$WORK/disk.img" > "$DIR/$OUT.part"
+mv "$DIR/$OUT.part" "$DIR/$OUT"
+if [ "$OUT" != "$FILE" ]; then
+  rm -f "$DIR/$FILE" "$DIR/$FILE.verified"
+  FILE="$OUT"
+fi
 SUM=$(sha256sum "$DIR/$FILE" | cut -d' ' -f1)
 SZ=$(stat -c%s "$DIR/$FILE")
 say "$ID: $((SZ / 1048576)) MB, sha256 $SUM"

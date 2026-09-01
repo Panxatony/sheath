@@ -80,7 +80,15 @@ func (a *App) workImage(job imageWork) {
 	a.setImageState(job.ID, imgWorking, "fetching")
 	a.logEvent("", "info", "image "+job.ID+": fetching "+job.URL)
 
-	out, err := a.runTool("mirror-image.sh", job.ID, job.URL, job.OSID)
+	// Where preparation follows, the mirror hands the image over uncompressed:
+	// prepare-image.sh unpacks it to change it and compresses the result
+	// itself, so compressing here as well is ten minutes of a Compute Module's
+	// CPU spent on a file nobody will ever read.
+	mirror := []string{job.ID, job.URL, job.OSID}
+	if len(job.Packages) > 0 {
+		mirror = append([]string{"--raw"}, mirror...)
+	}
+	out, err := a.runTool("mirror-image.sh", mirror...)
 	if err != nil {
 		a.setImageState(job.ID, imgError, "fetch failed: "+lastLine(out))
 		a.logEvent("", "warn", "image "+job.ID+": fetch failed — "+lastLine(out))
@@ -93,7 +101,10 @@ func (a *App) workImage(job imageWork) {
 		out, err = a.runTool("prepare-image.sh", append([]string{job.ID}, job.Packages...)...)
 		if err != nil {
 			// The image is on disk and usable; only the customisation failed.
-			// Saying "error" would suggest there is nothing to install.
+			// Saying "error" would suggest there is nothing to install. It is
+			// uncompressed at this point, which a blade copes with — the
+			// installer chooses by extension and raw is one of the choices —
+			// and a second attempt starts from the file that is already here.
 			a.setImageState(job.ID, imgReady, "fetched, but not prepared: "+lastLine(out))
 			a.logEvent("", "warn", "image "+job.ID+": preparation failed — "+lastLine(out))
 			return
