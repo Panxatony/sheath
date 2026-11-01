@@ -9,8 +9,8 @@ import (
 // Whether anyone can get in.
 //
 // A blade can be perfectly healthy, report every thirty seconds, and still be
-// a blade nobody can open a shell on — which is how the three at Terrassenweg
-// were found: they answered every ping and refused port 22. The agent is
+// a blade nobody can open a shell on — which is how three of them were found:
+// they answered every ping and refused port 22. The agent is
 // already inside, so it can say what is actually the case, and the three
 // answers together tell the cases apart. sshd missing is an image without it.
 // sshd present but not running is a unit that is off or that failed, and a
