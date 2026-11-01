@@ -5,6 +5,13 @@
 /site/sheath-site
 *.test
 
+# The same four under the name the project carried before Sheath. Three of
+# them were committed once; nothing should put them back.
+/server/rookery
+/agent/rookery-agent
+/installer/rookery-installer
+/site/rookery-site
+
 # Local only: work in progress and previews
 /assets/preview.html
 
