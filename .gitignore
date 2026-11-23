@@ -23,3 +23,6 @@
 # public. deploy/inventory.example.ini is the one that ships.
 /deploy/inventory.ini
 /deploy/host_vars/
+
+# macOS
+.DS_Store
