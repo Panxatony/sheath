@@ -5,6 +5,13 @@ on `main`.
 
 ## Unreleased
 
+### Fixed
+- **The installer's zstd decoder had an overflow in it.**
+  `klauspost/compress` up to 1.18.6 carries GHSA-259r-337f-4rfw, an integer
+  overflow with an out-of-bounds write; the installer uses the package to
+  unpack an image it pulled over HTTP. Now on 1.19.2, which is the newest
+  line that still builds with Go 1.24 like the other three modules.
+
 ## v0.8.3-alpha — 2026-08-30
 
 The week the fleet stopped being uniform and Sheath had to say so out loud.
